@@ -253,6 +253,11 @@ button.secondary:hover {
   padding: 8px;
   background-color: var(--secondary-bg);
   border-radius: 8px;
+  border: 2px solid transparent; /* Añadir borde transparente para evitar saltos de layout */
+  transition: border-color 0.3s ease-in-out;
+}
+.sync-option.success {
+  border-color: var(--success-accent);
 }
 .switch {
   position: relative;

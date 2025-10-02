@@ -1,7 +1,7 @@
 // popup.js - lógica para guardar/editar/eliminar notas usando chrome.storage.local
 import { getNotes, saveNotes } from './utils.js';
 import browserAPI from './browser-api.js';
-import { uploadNotesToDrive, downloadNotesFromDrive, getUserInfo, removeAuthToken } from './drive-sync.js';
+import { uploadNotesToDrive, downloadNotesFromDrive, getAuthTokenAndInfo, removeAuthToken } from './drive-sync.js';
 
 const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');
@@ -291,7 +291,7 @@ async function loginToDrive() {
   userAvatarEl.classList.add('loading');
 
   try {
-    const { userInfo } = await getUserInfo(true); // Pide login interactivo
+    const { userInfo } = await getAuthTokenAndInfo(true); // Pide login interactivo
     console.log("Login exitoso.");
     updateSyncUI(true, userInfo);
     return true;
@@ -319,16 +319,11 @@ async function loginToDrive() {
 async function handleSyncTabActivation() {
   const loginSuccess = await loginToDrive();
 
-  if (loginSuccess) {
-    try {
-      // Si el login es exitoso, preguntar si se desea bajar las notas.
-      if (confirm('¿Deseas sincronizar y bajar las notas desde Google Drive ahora? Esto reemplazará tus notas locales.')) {
-        await downloadNotes();
-      }
-    } catch (error) {
-      console.error("Fallo al sincronizar después del login:", error);
-      status(`Error de sincronización: ${error.message}`, 'danger', 5000);
-    }
+  // Si el login es exitoso y la sincronización automática está activada,
+  // se iniciará una fusión segura de las notas.
+  if (loginSuccess && isAutoSyncEnabled) {
+    status('Login exitoso. Iniciando sincronización automática...', 'info');
+    await autoSyncNotes();
   }
 }
 
@@ -342,12 +337,23 @@ uploadBtn.addEventListener('click', async () => {
     const localNotes = await getNotes();
     await uploadNotesToDrive(localNotes);
     status('Notas subidas a Google Drive con éxito.', 'success');
+    
+    // --- Mejora de feedback visual ---
+    uploadBtn.style.backgroundColor = 'var(--success-accent)';
+    uploadBtn.textContent = '¡Subido!';
+    setTimeout(() => {
+        uploadBtn.style.backgroundColor = ''; // Revertir al color original
+        setButtonLoading(uploadBtn, false); // Restaurar texto y estado
+    }, 2000);
+    // No llamamos a setButtonLoading aquí para controlar el estado manualmente
+
   } catch (error) {
     updateSyncUI(false); // Si hay error de token, reflejarlo en la UI
     console.error("Error al subir notas:", error);
     status(`Error al subir: ${error.message}`, 'danger', 5000);
+    setButtonLoading(uploadBtn, false); // Restaurar en caso de error
   } finally {
-    setButtonLoading(uploadBtn, false);
+    // El setButtonLoading se maneja en los bloques try/catch ahora
   }
 });
 
@@ -357,15 +363,29 @@ uploadBtn.addEventListener('click', async () => {
 async function downloadNotes() {
   setButtonLoading(downloadBtn, true);
   status('Bajando notas...', 'info', -1);
-  const driveNotes = await downloadNotesFromDrive();
-  if (driveNotes) {
-    await saveNotes(driveNotes);
-    await renderNotes(); // Actualizar la lista en la pestaña de historial
-    status('Notas bajadas de Google Drive con éxito.', 'success');
-  } else {
-    status('No se encontraron notas en Google Drive para bajar.', 'info');
+  try {
+    const driveNotes = await downloadNotesFromDrive();
+    if (driveNotes) {
+      await saveNotes(driveNotes);
+      await renderNotes(); // Actualizar la lista en la pestaña de historial
+      status('Notas bajadas de Google Drive con éxito.', 'success');
+      // --- Mejora de feedback visual ---
+      downloadBtn.style.backgroundColor = 'var(--success-accent)';
+      downloadBtn.textContent = '¡Descargado!';
+      setTimeout(() => {
+        downloadBtn.style.backgroundColor = ''; // Revertir al color original
+        setButtonLoading(downloadBtn, false); // Restaurar texto y estado
+      }, 2000);
+    } else {
+      status('No se encontraron notas en Google Drive para bajar.', 'info');
+      setButtonLoading(downloadBtn, false);
+    }
+  } catch (error) {
+    updateSyncUI(false); // Si hay error de token, reflejarlo en la UI
+    console.error("Error al bajar notas:", error);
+    status(`Error al bajar: ${error.message}`, 'danger', 5000);
+    setButtonLoading(downloadBtn, false); // Asegurarse de reactivar el botón en caso de error
   }
-  setButtonLoading(downloadBtn, false);
 }
 
 downloadBtn.addEventListener('click', async () => {
@@ -413,7 +433,7 @@ async function checkInitialSyncStatus() {
     userAvatarEl.classList.add('loading');
     // Intenta obtener el token sin mostrar popup de login.
     // Si el usuario ya ha dado permisos, esto funcionará.
-    const { userInfo } = await getUserInfo(false);
+    const { userInfo } = await getAuthTokenAndInfo(false);
     updateSyncUI(true, userInfo);
     // Una vez logueado, comprobar si la auto-sincronización debe ejecutarse
     if (isAutoSyncEnabled) {
@@ -459,6 +479,16 @@ async function autoSyncNotes() {
     await uploadNotesToDrive(mergedNotes); // Subir a Drive
     await renderNotes();
     status('Notas sincronizadas con éxito.', 'success');
+
+    // --- Mejora de feedback visual para auto-sync ---
+    const syncOptionEl = document.querySelector('.sync-option');
+    if (syncOptionEl) {
+      syncOptionEl.classList.add('success');
+      setTimeout(() => {
+        syncOptionEl.classList.remove('success');
+      }, 2000);
+    }
+
   } catch (error) {
     status(`Error de sincronización: ${error.message}`, 'danger', 5000);
   }

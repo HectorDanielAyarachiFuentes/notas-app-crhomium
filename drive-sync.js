@@ -36,14 +36,72 @@ function getAuthToken(interactive = false) {
  */
 async function findNotesFile(token) {
   console.log("Buscando archivo de notas en Drive...");
-  const response = await fetch(`${DRIVE_API_URL}/files?q=name='${NOTES_FILE_NAME}'&spaces=appDataFolder`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+  const params = new URLSearchParams({
+    q: `name='${NOTES_FILE_NAME}'`,
+    // 'appDataFolder' es una carpeta oculta especial para datos de la aplicación.
+    // El usuario no puede ver este archivo directamente en su Google Drive.
+    spaces: 'appDataFolder', 
+    fields: 'files(id)' // Pedimos solo el ID para optimizar la respuesta
   });
-  if (!response.ok) throw new Error(`Error al buscar archivo: ${response.statusText}`);
-  const data = await response.json();
-  const fileId = data.files.length > 0 ? data.files[0].id : null;
-  console.log(fileId ? `Archivo encontrado con ID: ${fileId}` : "Archivo no encontrado.");
-  return data.files.length > 0 ? data.files[0].id : null;
+  const url = `${DRIVE_API_URL}/files?${params.toString()}`;
+
+  try {
+    const { response } = await driveApiRequest(url, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    }, token);
+
+    // ¡Comprobación crucial! Asegurarse de que la respuesta fue exitosa.
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`La API de Drive respondió con error ${response.status}: ${errorBody}`);
+    }
+
+    const data = await response.json(); // Ahora 'response' es el objeto correcto
+    const fileId = data.files.length > 0 ? data.files[0].id : null;
+    console.log(fileId ? `Archivo encontrado con ID: ${fileId}` : "Archivo no encontrado.");
+    return fileId;
+  } catch (error) {
+    // Si el error persiste después del reintento, lo lanzamos.
+    throw new Error(`Error al buscar archivo: ${error.message}`);
+  }
+}
+
+/**
+ * Envuelve una solicitud a la API de Drive para manejar la reautenticación.
+ * @param {string} url - La URL a la que se hará la solicitud.
+ * @param {object} options - Las opciones para fetch().
+ * @param {string} token - El token a usar.
+ * @returns {Promise<Response>}
+ */
+async function driveApiRequest(url, options, initialToken) {
+  let token = initialToken;
+  let response = await fetch(url, options);
+
+  if (response.status === 401) {
+    console.warn("Token inválido o expirado. Reintentando con un nuevo token...");
+    token = await getAuthToken(false); // Obtener nuevo token no interactivamente
+    options.headers['Authorization'] = `Bearer ${token}`;
+    response = await fetch(url, options); // Reintentar la solicitud
+  }
+
+  // Si la respuesta sigue sin ser exitosa (incluso después del reintento)
+  if (!response.ok) {
+    const errorBody = await response.text();
+    // Intentamos parsear el error para dar un mensaje más útil
+    try {
+      const errorJson = JSON.parse(errorBody);
+      if (response.status === 403 && errorJson.error?.details?.[0]?.reason === 'SERVICE_DISABLED') {
+        throw new Error("La API de Google Drive no está habilitada en tu proyecto de Google Cloud. Por favor, actívala y vuelve a intentarlo.");
+      }
+      // Si es otro error, mostramos el mensaje de la API
+      const errorMessage = errorJson.error?.message || errorBody;
+      throw new Error(`Error ${response.status}: ${errorMessage}`);
+    } catch (e) {
+      // Si el cuerpo del error no es JSON o es nuestro error personalizado, lo relanzamos
+      throw e.message.startsWith("La API de Google Drive") ? e : new Error(`Error ${response.status}: ${errorBody}`);
+    }
+  }
+  return { response, token }; // Devolver también el token (puede ser el nuevo)
 }
 
 /**
@@ -53,7 +111,7 @@ async function findNotesFile(token) {
  */
 export async function uploadNotesToDrive(notes) {
   console.log("Iniciando subida de notas...");
-  const token = await getAuthToken();
+  let { token } = await getAuthTokenAndInfo();
   const fileId = await findNotesFile(token);
   const notesJSON = JSON.stringify(notes);
   const blob = new Blob([notesJSON], { type: 'application/json' });
@@ -76,16 +134,22 @@ export async function uploadNotesToDrive(notes) {
     ? `${DRIVE_UPLOAD_URL}/files/${fileId}?uploadType=multipart` // Actualizar
     : `${DRIVE_UPLOAD_URL}/files?uploadType=multipart`; // Crear
 
-  const response = await fetch(uploadUrl, {
+  const options = {
     method: fileId ? 'PATCH' : 'POST',
     headers: { 'Authorization': `Bearer ${token}` },
     body: form
-  });
+  };
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Error al subir notas: ${response.statusText}. Detalles: ${errorBody}`);
-  }
+  // Usamos el wrapper y actualizamos el token por si cambió
+  const { response, token: newToken } = await driveApiRequest(uploadUrl, options, token);
+  token = newToken;
+
+  // La comprobación de !response.ok ya se hace dentro de driveApiRequest,
+  // por lo que si llegamos aquí, la operación fue exitosa.
+  // if (!response.ok) {
+  //   const errorBody = await response.text();
+  //   throw new Error(`Error al subir notas: ${response.statusText}. Detalles: ${errorBody}`);
+  // }
   console.log("Notas subidas con éxito.");
 }
 
@@ -95,7 +159,7 @@ export async function uploadNotesToDrive(notes) {
  */
 export async function downloadNotesFromDrive() {
   console.log("Iniciando bajada de notas...");
-  const token = await getAuthToken();
+  let { token } = await getAuthTokenAndInfo();
   const fileId = await findNotesFile(token);
 
   if (!fileId) {
@@ -103,14 +167,13 @@ export async function downloadNotesFromDrive() {
     return null;
   }
 
-  const response = await fetch(`${DRIVE_API_URL}/files/${fileId}?alt=media`, {
+  const url = `${DRIVE_API_URL}/files/${fileId}?alt=media`;
+  const options = {
     headers: { 'Authorization': `Bearer ${token}` }
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Error al descargar notas: ${response.statusText}. Detalles: ${errorBody}`);
-  }
+  };
+  // Usamos el wrapper y actualizamos el token por si cambió
+  const { response, token: newToken } = await driveApiRequest(url, options, token);
+  token = newToken;
 
   const notes = await response.json();
   console.log("Notas bajadas con éxito.");
@@ -123,7 +186,7 @@ export async function downloadNotesFromDrive() {
  * @param {boolean} interactive - Si se debe mostrar un popup de login al usuario.
  * @returns {Promise<{token: string, userInfo: Object}>} El token y la información del usuario.
  */
-export async function getUserInfo(interactive = false) {
+export async function getAuthTokenAndInfo(interactive = false) {
     console.log("Obteniendo información del usuario...");
     const token = await getAuthToken(interactive);
     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -141,19 +204,22 @@ export async function getUserInfo(interactive = false) {
  * @returns {Promise<void>}
  */
 export async function removeAuthToken() {
-  return new Promise(async (resolve, reject) => {
-    if (!browserAPI || !browserAPI.identity) {
-      return reject(new Error("La API de identidad no está disponible."));
-    }
-    console.log("Intentando remover token de la caché...");
-    try {
-      const token = await getAuthToken(false); // Obtener token actual para removerlo
+  if (!browserAPI || !browserAPI.identity) {
+    throw new Error("La API de identidad no está disponible.");
+  }
+  console.log("Intentando remover token y cerrar sesión...");
+  try {
+    // Primero, obtenemos el token actual para poder invalidarlo.
+    const token = await getAuthToken(false);
+    if (token) {
+      // Invalidamos el token en la caché del navegador.
       await browserAPI.identity.removeCachedAuthToken({ token });
-      console.log("Token removido de la caché.");
-      resolve();
-    } catch (error) {
-      console.error("Error al remover el token:", error.message);
-      reject(error);
+      // Invalidamos el token en los servidores de Google.
+      await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`);
+      console.log("Token de autenticación invalidado.");
     }
-  });
+  } catch (error) {
+    // Aunque falle, continuamos para asegurar que la sesión se cierre en la extensión.
+    console.warn("No se pudo invalidar el token (quizás ya había expirado):", error.message);
+  }
 }
