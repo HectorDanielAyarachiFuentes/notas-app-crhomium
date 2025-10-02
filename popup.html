@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Notas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header-bar">
+      <div id="user-profile" style="display: none;">
+        <img id="user-avatar" src="" alt="Avatar de usuario">
+        <span id="user-email"></span>
+      </div>
+      <div id="login-prompt">
+        <button id="login-btn">Iniciar sesión con Google</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab-button" data-tab="create">📝 Crear</button>
+      <button class="tab-button active" data-tab="history">📜 Historial</button>
+      <button class="tab-button" data-tab="sync">👤 Cuenta</button>
+    </div>
+
+    <div class="tab-content">
+      <div id="tab-create" class="tab-panel">
+        <div class="editor">
+          <h1>Editor de Notas</h1>
+          <input id="title" placeholder="Título de la nota..." maxlength="100" />
+          <div class="textarea-container">
+            <textarea id="content" placeholder="Escribe tus ideas, tareas o recordatorios aquí..." rows="8"></textarea>
+            <div id="char-counter" class="char-counter"></div>
+          </div>
+          <div class="row">
+            <button id="saveBtn">💾 Guardar nota</button>
+            <button id="newBtn" class="secondary">🧹 Limpiar</button>
+          </div>
+          <div id="status" class="status"></div>
+        </div>
+      </div>
+
+      <div id="tab-history" class="tab-panel active">
+        <h2>Tus notas</h2>
+        <input type="search" id="search-input" placeholder="🔍 Buscar por título...">
+        <ul id="notesList"></ul>
+      </div>
+
+      <div id="tab-sync" class="tab-panel">
+        <h2>Cuenta de Google</h2>
+        <p class="text-muted">
+          Sincroniza tus notas con Google Drive para tener una copia de seguridad y acceder a ellas desde cualquier lugar.
+        </p>
+        <p id="sync-logged-out-msg" class="text-muted" style="display: none;">
+          Inicia sesión para poder subir o bajar tus notas.
+        </p>
+        <div id="sync-actions" style="display: none; flex-direction: column; gap: 12px;">
+          <div class="sync-option">
+            <label for="auto-sync-toggle" class="text-muted">Sincronización automática</label>
+            <label class="switch">
+              <input type="checkbox" id="auto-sync-toggle">
+              <span class="slider round"></span>
+            </label>
+          </div>
+          <button id="logout-btn" class="secondary" title="Cerrar sesión">🚪 Cerrar sesión</button>
+        </div>
+        <p class="text-muted" id="sync-loading-msg" style="display: none;">Comprobando estado de la conexión...</p>
+        <button id="upload-btn" class="secondary" style="display: none;">Subir notas a Drive</button>
+        <button id="download-btn" class="secondary" style="display: none;">Bajar notas de Drive</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
