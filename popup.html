@@ -9,12 +9,61 @@
 <body>
   <div class="container">
     <div class="header-bar">
-      <div id="user-profile" style="display: none;">
+      <div id="user-profile" class="header-content" style="display: none;">
         <img id="user-avatar" src="" alt="Avatar de usuario">
-        <span id="user-email"></span>
+        <div class="user-info">
+          <span id="user-name"></span>
+          <span id="user-email" class="text-muted small-text"></span>
+        </div>
       </div>
-      <div id="login-prompt">
-        <button id="login-btn">Iniciar sesión con Google</button>
+      <div id="login-prompt" class="header-content">
+        <span class="text-muted">Sincronización desactivada</span>
+        <button id="login-btn" class="secondary small-btn">Iniciar sesión</button>
+      </div>
+    </div>
+    <div id="settings-container" class="header-actions">
+      <button id="settings-btn" class="btn-icon" title="Ajustes y Ayuda">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+      <div id="settings-dropdown" class="settings-menu" style="display: none;">
+        <div class="help-section">
+          <h3>Apariencia</h3>
+          <div class="setting-item">
+            <label for="theme-selector">Tema</label>
+            <select id="theme-selector" class="secondary">
+              <option value="system">Seguir al sistema</option>
+              <option value="light">Claro</option>
+              <option value="dark">Oscuro</option>
+            </select>
+          </div>
+        </div>
+        <div class="help-section">
+          <h3>Gestión de datos</h3>
+          <div class="data-actions">
+            <button id="export-btn" class="secondary">Exportar notas</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;">
+            <button id="import-btn" class="secondary">Importar notas</button>
+          </div>
+        </div>
+        <div class="help-section">
+          <h3>Sobre Nosotros</h3>
+          <div class="about-us">
+            <img src="img/dulceflamengo.png" alt="Dulce Flamengo" class="about-us-logo">
+            <p class="text-muted small-text">Desarrollado con pasión para organizar tus ideas.</p>
+          </div>
+        </div>
+        <div class="help-section">
+          <h3>Tecnologías Usadas</h3>
+          <ul>
+            <li>HTML5, CSS3, JavaScript (ES6+)</li>
+            <li>APIs de Extensión de Navegador</li>
+            <li>Google Drive API para sincronización</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h3>Acerca de</h3>
+          <p class="text-muted small-text">Versión de la extensión: <span id="extension-version"></span></p>
+        </div>
       </div>
     </div>
     <div class="tabs">
@@ -26,13 +75,13 @@
     <div class="tab-content">
       <div id="tab-create" class="tab-panel">
         <div class="editor">
-          <h1>Editor de Notas</h1>
+          <h1 id="editor-title">Nueva Nota</h1>
           <input id="title" placeholder="Título de la nota..." maxlength="100" />
           <div class="textarea-container">
             <textarea id="content" placeholder="Escribe tus ideas, tareas o recordatorios aquí..." rows="8"></textarea>
             <div id="char-counter" class="char-counter"></div>
           </div>
-          <div class="row">
+          <div class="editor-actions">
             <button id="saveBtn">💾 Guardar nota</button>
             <button id="newBtn" class="secondary">🧹 Limpiar</button>
           </div>
@@ -42,19 +91,19 @@
 
       <div id="tab-history" class="tab-panel active">
         <h2>Tus notas</h2>
-        <input type="search" id="search-input" placeholder="🔍 Buscar por título...">
+        <input type="search" id="search-input" placeholder="🔍 Buscar en tus notas...">
         <ul id="notesList"></ul>
       </div>
 
       <div id="tab-sync" class="tab-panel">
         <h2>Cuenta de Google</h2>
-        <p class="text-muted">
+        <p class="text-muted small-text">
           Sincroniza tus notas con Google Drive para tener una copia de seguridad y acceder a ellas desde cualquier lugar. Se utiliza el espacio de almacenamiento gratuito de tu cuenta de Google. No hay costos asociados.
         </p>
-        <p id="sync-logged-out-msg" class="text-muted" style="display: none;">
+        <p id="sync-logged-out-msg" class="text-muted small-text" style="display: none;">
           Inicia sesión para poder subir o bajar tus notas.
         </p>
-        <div id="sync-actions" style="display: none; flex-direction: column; gap: 12px;">
+        <div id="sync-actions" style="display: none; flex-direction: column; gap: 16px;">
           <div class="sync-option">
             <label for="auto-sync-toggle" class="text-muted">Sincronización automática</label>
             <label class="switch">
@@ -62,11 +111,15 @@
               <span class="slider round"></span>
             </label>
           </div>
-          <button id="logout-btn" class="secondary" title="Cerrar sesión">🚪 Cerrar sesión</button>
+          <div class="manual-sync-actions">
+            <button id="upload-btn" class="secondary">Subir notas a Drive</button>
+            <p class="text-muted small-text">Reemplaza la copia de Drive con tus notas locales.</p>
+            <button id="download-btn" class="secondary">Bajar notas de Drive</button>
+            <p class="text-muted small-text">Reemplaza tus notas locales con la copia de Drive.</p>
+          </div>
+          <button id="logout-btn" class="secondary danger-text" title="Cerrar sesión">🚪 Cerrar sesión</button>
         </div>
         <p class="text-muted" id="sync-loading-msg" style="display: none;">Comprobando estado de la conexión...</p>
-        <button id="upload-btn" class="secondary" style="display: none;">Subir notas a Drive</button>
-        <button id="download-btn" class="secondary" style="display: none;">Bajar notas de Drive</button>
       </div>
     </div>
   </div>

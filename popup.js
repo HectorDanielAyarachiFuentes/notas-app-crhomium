@@ -7,6 +7,7 @@ const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');
 const charCounterEl = document.getElementById('char-counter');
 const saveBtn = document.getElementById('saveBtn');
+const editorTitleEl = document.getElementById('editor-title');
 const newBtn = document.getElementById('newBtn');
 const notesList = document.getElementById('notesList');
 const statusEl = document.getElementById('status');
@@ -21,12 +22,20 @@ const userProfileEl = document.getElementById('user-profile');
 const loginPromptEl = document.getElementById('login-prompt');
 const userAvatarEl = document.getElementById('user-avatar');
 const userEmailEl = document.getElementById('user-email');
+const userNameEl = document.getElementById('user-name');
 const logoutBtn = document.getElementById('logout-btn');
 const autoSyncToggle = document.getElementById('auto-sync-toggle');
 
 const tabs = document.querySelectorAll('.tab-button');
 const tabPanels = document.querySelectorAll('.tab-panel');
 const searchInput = document.getElementById('search-input');
+const settingsBtn = document.getElementById('settings-btn');
+const settingsDropdown = document.getElementById('settings-dropdown');
+const versionSpan = document.getElementById('extension-version');
+const themeSelector = document.getElementById('theme-selector');
+const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importFileInput = document.getElementById('import-file-input');
 
 let editingId = null;
 let statusTimeout = null;
@@ -56,7 +65,8 @@ function createNoteListItem(note) {
     editingId = note.id;
     titleEl.value = note.title;
     contentEl.value = note.content;
-    newBtn.textContent = 'Limpiar';
+    editorTitleEl.textContent = 'Editando nota';
+    newBtn.innerHTML = '❌ Cancelar'; // Cambiamos el texto y el icono
     status('Editando nota...', 'info', -1);
     switchTab('create');
     titleEl.focus();
@@ -159,7 +169,8 @@ function clearEditor() {
   editingId = null;
   titleEl.value = '';
   contentEl.value = '';
-  newBtn.textContent = 'Nueva';
+  editorTitleEl.textContent = 'Nueva Nota';
+  newBtn.innerHTML = '🧹 Limpiar';
   titleEl.classList.remove('invalid');
   contentEl.classList.remove('invalid');
   status('Editor limpio.', 'info');
@@ -190,9 +201,14 @@ saveBtn.addEventListener('click', async () => {
   titleEl.classList.remove('invalid');
   contentEl.classList.remove('invalid');
 
+  // Remover animación de error si existe
+  titleEl.parentElement.classList.remove('shake');
+
   if (!title && !content) {
     titleEl.classList.add('invalid');
     contentEl.classList.add('invalid');
+    // Añadir animación de "shake" para feedback visual
+    titleEl.parentElement.classList.add('shake');
     status('La nota está vacía. Escribe algo.', 'danger');
     return;
   }
@@ -245,6 +261,96 @@ searchInput.addEventListener('input', (e) => {
   renderNotes(e.target.value);
 });
 
+settingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation(); // Evita que el clic se propague al listener del documento
+  const isHidden = settingsDropdown.style.display === 'none';
+  settingsDropdown.style.display = isHidden ? 'block' : 'none';
+});
+
+// Cierra el menú si se hace clic en cualquier otro lugar
+document.addEventListener('click', (e) => {
+  const settingsContainer = document.getElementById('settings-container');
+  // Si el clic fue fuera del contenedor de ajustes, cierra el menú
+  if (!settingsContainer.contains(e.target)) {
+    settingsDropdown.style.display = 'none';
+  }
+});
+
+themeSelector.addEventListener('change', (e) => {
+  const selectedTheme = e.target.value;
+  applyTheme(selectedTheme);
+  browserAPI.storage.sync.set({ theme: selectedTheme });
+});
+
+function applyTheme(theme) {
+  const docEl = document.documentElement;
+  docEl.classList.remove('theme-light', 'theme-dark', 'theme-system');
+  if (theme === 'light') {
+    docEl.classList.add('theme-light');
+  } else if (theme === 'dark') {
+    docEl.classList.add('theme-dark');
+  } else {
+    docEl.classList.add('theme-system');
+  }
+}
+
+exportBtn.addEventListener('click', async () => {
+  const notes = await getNotes();
+  const notesJSON = JSON.stringify(notes, null, 2);
+  const blob = new Blob([notesJSON], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const date = new Date().toISOString().slice(0, 10);
+  a.download = `notas-export-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  status('Notas exportadas con éxito.', 'success');
+});
+
+importBtn.addEventListener('click', () => {
+  importFileInput.click();
+});
+
+importFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const importedNotes = JSON.parse(event.target.result);
+      if (!Array.isArray(importedNotes)) {
+        throw new Error('El archivo no contiene un array de notas válido.');
+      }
+
+      // Lógica de fusión inteligente
+      const localNotes = await getNotes();
+      const notesMap = new Map();
+
+      [...localNotes, ...importedNotes].forEach(note => {
+        if (!note.id || !note.updatedAt) return; // Ignorar notas malformadas
+        const existing = notesMap.get(note.id);
+        if (!existing || note.updatedAt > existing.updatedAt) {
+          notesMap.set(note.id, note);
+        }
+      });
+
+      const mergedNotes = Array.from(notesMap.values());
+      await saveNotes(mergedNotes);
+      await renderNotes();
+      status(`${importedNotes.length} notas importadas y fusionadas.`, 'success');
+      switchTab('history');
+
+    } catch (error) {
+      status(`Error al importar: ${error.message}`, 'danger', 5000);
+    }
+  };
+  reader.readAsText(file);
+});
+
 contentEl.addEventListener('input', () => {
   charCounterEl.textContent = `${contentEl.value.length} caracteres`;
 });
@@ -263,7 +369,8 @@ function updateSyncUI(isConnected, userInfo = null) {
   const syncActionsEl = document.getElementById('sync-actions');
   if (isConnected) {
     userAvatarEl.src = userInfo.picture || '';
-    userEmailEl.textContent = userInfo.email || 'Usuario';
+    userNameEl.textContent = `Bienvenido, ${userInfo.given_name || 'Usuario'}`;
+    userEmailEl.textContent = userInfo.email || '';
     userProfileEl.style.display = 'flex';
     loginPromptEl.style.display = 'none';
     uploadBtn.style.display = 'inline-block';
@@ -418,8 +525,13 @@ autoSyncToggle.addEventListener('change', async (e) => {
   isAutoSyncEnabled = e.target.checked;
   await browserAPI.storage.sync.set({ autoSyncEnabled: isAutoSyncEnabled });
   if (isAutoSyncEnabled) {
-    status('Sincronización automática activada.', 'success');
-    autoSyncNotes();
+    if (isLoggedIn) {
+      status('Sincronización automática activada.', 'success');
+      autoSyncNotes();
+    } else {
+      status('Inicia sesión para activar la sincronización.', 'info', -1);
+      await handleSyncTabActivation(); // Iniciar login
+    }
   } else {
     status('Sincronización automática desactivada.', 'info');
   }
@@ -504,9 +616,20 @@ async function init() {
   isAutoSyncEnabled = autoSyncEnabled;
   autoSyncToggle.checked = isAutoSyncEnabled;
 
+  // Cargar preferencia de tema
+  const { theme } = await browserAPI.storage.sync.get({ theme: 'system' });
+  themeSelector.value = theme;
+  applyTheme(theme);
+
   // 1. Renderizar la lista de notas en la pestaña de historial.
   charCounterEl.textContent = `${contentEl.value.length} caracteres`;
   renderNotes();
+  
+  // Cargar versión de la extensión
+  if (versionSpan) {
+    const manifest = browserAPI.runtime.getManifest();
+    versionSpan.textContent = manifest.version;
+  }
 
   // 2. Comprobar el estado de la conexión de Google Drive en segundo plano.
   await checkInitialSyncStatus();
