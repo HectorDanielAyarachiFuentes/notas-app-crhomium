@@ -11,14 +11,18 @@ export async function getNotes() {
   if (browserAPI && browserAPI.storage) {
     // Usamos la versión moderna de la API que devuelve una promesa.
     // El objeto {notes: []} establece un valor predeterminado si 'notes' no existe.
-    const { notes } = await browserAPI.storage.sync.get({ notes: [] });
+    // Usamos local para evitar los límites estrictos de cuota de sync.
+    const { notes } = await browserAPI.storage.local.get({ notes: [] });
     return notes;
   }
-  // Fallback para desarrollo local usando localStorage
-  console.warn("chrome.storage.sync no encontrado. Usando localStorage como alternativa.");
-  const notesJSON = localStorage.getItem('notes');
-  // Devuelve las notas parseadas o un array vacío
-  return notesJSON ? JSON.parse(notesJSON) : [];
+  // Fallback para desarrollo local (solo si estamos en un contexto con window/localStorage)
+  if (typeof localStorage !== 'undefined') {
+    console.warn("chrome.storage.sync no encontrado. Usando localStorage como alternativa.");
+    const notesJSON = localStorage.getItem('notes');
+    return notesJSON ? JSON.parse(notesJSON) : [];
+  }
+  
+  return [];
 }
 
 /**
@@ -29,10 +33,13 @@ export async function getNotes() {
 export async function saveNotes(notes) {
   if (browserAPI && browserAPI.storage) {
     // Usamos chrome.storage.sync para consistencia y aprovechamos la promesa nativa.
-    return browserAPI.storage.sync.set({ notes });
+    // Usamos local para mayor capacidad y velocidad.
+    return browserAPI.storage.local.set({ notes });
   }
   // Fallback para desarrollo local
-  console.warn("API de almacenamiento no encontrada. Usando localStorage como alternativa.");
-  localStorage.setItem('notes', JSON.stringify(notes));
+  if (typeof localStorage !== 'undefined') {
+    console.warn("API de almacenamiento no encontrada. Usando localStorage como alternativa.");
+    localStorage.setItem('notes', JSON.stringify(notes));
+  }
   return Promise.resolve(); // Simula el comportamiento asíncrono
 }

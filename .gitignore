@@ -1,0 +1,19 @@
+# Browser extension artifacts
+*.zip
+*.crx
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDES
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+node_modules/
+dist/
+build/

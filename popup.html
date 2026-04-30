@@ -3,126 +3,192 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Notas</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Notas Pro</title>
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <div class="container">
-    <div class="header-bar">
-      <div id="user-profile" class="header-content" style="display: none;">
-        <img id="user-avatar" src="" alt="Avatar de usuario">
-        <div class="user-info">
-          <span id="user-name"></span>
-          <span id="user-email" class="text-muted small-text"></span>
-        </div>
-      </div>
-      <div id="login-prompt" class="header-content">
-        <span class="text-muted">Sincronización desactivada</span>
-        <button id="login-btn" class="secondary small-btn">Iniciar sesión</button>
-      </div>
-    </div>
-    <div id="settings-container" class="header-actions">
-      <button id="settings-btn" class="btn-icon" title="Ajustes y Ayuda">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      </button>
-      <div id="settings-dropdown" class="settings-menu" style="display: none;">
-        <div class="help-section">
-          <h3>Apariencia</h3>
-          <div class="setting-item">
-            <label for="theme-selector">Tema</label>
-            <select id="theme-selector" class="secondary">
-              <option value="system">Seguir al sistema</option>
-              <option value="light">Claro</option>
-              <option value="dark">Oscuro</option>
-            </select>
+    <div class="main-layout">
+      <main class="tab-content">
+        <section id="tab-create" class="tab-panel active">
+          <div class="editor">
+            <h1 id="editor-title">Nueva Nota</h1>
+            <input id="title" placeholder="Título cautivador..." maxlength="100" />
+            <div class="textarea-container">
+              <textarea id="content" placeholder="Escribe algo increíble aquí..."></textarea>
+              <div id="char-counter" class="char-counter">0</div>
+            </div>
+            <div class="editor-actions" style="display: flex; gap: 8px;">
+              <button id="saveBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span>Guardar nota</span>
+              </button>
+              <button id="newBtn" class="secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <span>Limpiar</span>
+              </button>
+              <button id="ocr-btn" class="secondary" title="Extraer texto de la pantalla">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M8 13h2"></path><path d="M8 17h2"></path><path d="M14 13h2"></path><path d="M14 17h2"></path></svg>
+                <span>OCR</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="help-section">
-          <h3>Gestión de datos</h3>
-          <div class="data-actions">
-            <button id="export-btn" class="secondary">Exportar notas</button>
-            <input type="file" id="import-file-input" accept=".json" style="display: none;">
-            <button id="import-btn" class="secondary">Importar notas</button>
-          </div>
-        </div>
-        <div class="help-section">
-          <h3>Sobre Nosotros</h3>
-          <div class="about-us">
-            <img src="img/dulceflamengo.png" alt="Dulce Flamengo" class="about-us-logo">
-            <p class="text-muted small-text">Desarrollado con pasión para organizar tus ideas.</p>
-          </div>
-        </div>
-        <div class="help-section">
-          <h3>Tecnologías Usadas</h3>
-          <ul>
-            <li>HTML5, CSS3, JavaScript (ES6+)</li>
-            <li>APIs de Extensión de Navegador</li>
-            <li>Google Drive API para sincronización</li>
-          </ul>
-        </div>
-        <div class="help-section">
-          <h3>Acerca de</h3>
-          <p class="text-muted small-text">Versión de la extensión: <span id="extension-version"></span></p>
-        </div>
-      </div>
-    </div>
-    <div class="tabs">
-      <button class="tab-button" data-tab="create">📝 Crear</button>
-      <button class="tab-button active" data-tab="history">📜 Historial</button>
-      <button class="tab-button" data-tab="sync">👤 Cuenta</button>
-    </div>
+        </section>
 
-    <div class="tab-content">
-      <div id="tab-create" class="tab-panel">
-        <div class="editor">
-          <h1 id="editor-title">Nueva Nota</h1>
-          <input id="title" placeholder="Título de la nota..." maxlength="100" />
-          <div class="textarea-container">
-            <textarea id="content" placeholder="Escribe tus ideas, tareas o recordatorios aquí..." rows="8"></textarea>
-            <div id="char-counter" class="char-counter"></div>
+        <section id="tab-history" class="tab-panel">
+          <div style="position: relative;">
+            <input type="search" id="search-input" placeholder="Buscar notas...">
+            <svg style="position: absolute; right: 16px; top: 12px; opacity: 0.4;" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </div>
-          <div class="editor-actions">
-            <button id="saveBtn">💾 Guardar nota</button>
-            <button id="newBtn" class="secondary">🧹 Limpiar</button>
-          </div>
-          <div id="status" class="status"></div>
-        </div>
-      </div>
+          <ul id="notesList"></ul>
+        </section>
 
-      <div id="tab-history" class="tab-panel active">
-        <h2>Tus notas</h2>
-        <input type="search" id="search-input" placeholder="🔍 Buscar en tus notas...">
-        <ul id="notesList"></ul>
-      </div>
+        <section id="tab-sync" class="tab-panel">
+          <h2 style="font-size: 18px; margin-bottom: 8px;">Google Drive</h2>
+          <p style="font-size: 13px; opacity: 0.8; margin-bottom: 20px;">Mantén tus notas seguras y sincronizadas en la nube.</p>
+          
+          <div id="sync-logged-out-msg" style="display: none; text-align: center; padding: 20px; flex-direction: column; gap: 16px;">
+            <p style="margin-bottom: 8px;">Inicia sesión para activar la sincronización con Google Drive.</p>
+            <button id="sync-tab-login-btn" class="primary" style="width: 100%;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+              <span>Iniciar sesión</span>
+            </button>
+            <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+              <p style="font-size: 12px; opacity: 0.7; margin-bottom: 12px;">O descarga una copia local de tus notas:</p>
+              <button id="sync-tab-export-btn" class="secondary" style="width: 100%;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Exportar copia local</span>
+              </button>
+            </div>
+          </div>
 
-      <div id="tab-sync" class="tab-panel">
-        <h2>Cuenta de Google</h2>
-        <p class="text-muted small-text">
-          Sincroniza tus notas con Google Drive para tener una copia de seguridad y acceder a ellas desde cualquier lugar. Se utiliza el espacio de almacenamiento gratuito de tu cuenta de Google. No hay costos asociados.
-        </p>
-        <p id="sync-logged-out-msg" class="text-muted small-text" style="display: none;">
-          Inicia sesión para poder subir o bajar tus notas.
-        </p>
-        <div id="sync-actions" style="display: none; flex-direction: column; gap: 16px;">
-          <div class="sync-option">
-            <label for="auto-sync-toggle" class="text-muted">Sincronización automática</label>
-            <label class="switch">
-              <input type="checkbox" id="auto-sync-toggle">
-              <span class="slider round"></span>
-            </label>
+          <div id="sync-actions" style="display: none; flex-direction: column; gap: 12px;">
+            <div class="sync-option">
+              <span style="font-weight: 600;">Sincronización Auto</span>
+              <label class="switch">
+                <input type="checkbox" id="auto-sync-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <button id="upload-btn" class="secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                <span>Subir a Drive</span>
+              </button>
+              <button id="download-btn" class="secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Bajar de Drive</span>
+              </button>
+            </div>
+            <button id="logout-btn" class="secondary" style="color: var(--danger); margin-top: auto;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <span>Cerrar sesión</span>
+            </button>
           </div>
-          <div class="manual-sync-actions">
-            <button id="upload-btn" class="secondary">Subir notas a Drive</button>
-            <p class="text-muted small-text">Reemplaza la copia de Drive con tus notas locales.</p>
-            <button id="download-btn" class="secondary">Bajar notas de Drive</button>
-            <p class="text-muted small-text">Reemplaza tus notas locales con la copia de Drive.</p>
+          <p id="sync-loading-msg" style="display: none; text-align: center;">Conectando...</p>
+        </section>
+      </main>
+
+      <aside class="sidebar-nav">
+        <header class="header-bar">
+          <div id="user-profile" class="header-content" style="display: none;">
+            <img id="user-avatar" src="" alt="Avatar">
+            <div class="user-info">
+              <span id="user-name">Usuario</span>
+              <div class="status-badge">
+                <span class="status-dot online"></span>
+                <span id="user-email">Conectado</span>
+              </div>
+            </div>
           </div>
-          <button id="logout-btn" class="secondary danger-text" title="Cerrar sesión">🚪 Cerrar sesión</button>
-        </div>
-        <p class="text-muted" id="sync-loading-msg" style="display: none;">Comprobando estado de la conexión...</p>
-      </div>
+          <div id="login-prompt" class="header-content">
+            <div class="user-info">
+              <span id="user-name">Sincronización</span>
+              <div class="status-badge">
+                <span class="status-dot"></span>
+                <span id="user-email">Desconectado</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="header-actions">
+            <button id="login-btn" class="btn-icon" title="Iniciar sesión">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+            </button>
+            <button id="pin-btn" class="btn-icon" title="Abrir en panel lateral">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+            </button>
+            <button id="settings-btn" class="btn-icon" title="Ajustes">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+          </div>
+
+          <div id="settings-dropdown" class="settings-menu" style="display: none;">
+            <div class="settings-header">
+              <h3>Ajustes</h3>
+            </div>
+            
+            <div class="settings-section">
+              <div class="setting-item">
+                <span class="setting-label">Tema Visual</span>
+                <select id="theme-selector">
+                  <option value="system">Sistema</option>
+                  <option value="light">Claro</option>
+                  <option value="dark">Oscuro</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-header">
+              <h3>Gestión de Datos</h3>
+            </div>
+
+            <div class="settings-section">
+              <div class="data-actions">
+                <button id="export-btn" class="data-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  <span>Exportar</span>
+                </button>
+                <input type="file" id="import-file-input" accept=".json" style="display: none;">
+                <button id="import-btn" class="data-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span>Importar</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-footer">
+              <a href="https://github.com/HectorDanielAyarachiFuentes" target="_blank" class="about-us-link" title="Visitar perfil de GitHub">
+                <div class="about-us-container">
+                  <span class="speech-bubble">GUAO GUAO! 🐾</span>
+                  <img src="img/dulceflamengo.png" alt="Logo" class="about-us-logo">
+                </div>
+              </a>
+              <p style="font-size: 11px; margin: 0; font-weight: 800; opacity: 0.8;">Notas Pro v<span id="extension-version">1.0</span></p>
+              <p style="font-size: 10px; margin: 4px 0 0 0; font-weight: 600; opacity: 0.5; text-align: center;">Hecho por Hector Daniel Ayarachi Fuentes</p>
+            </div>
+          </div>
+        </header>
+
+        <nav class="tabs">
+          <button class="tab-button active" data-tab="create">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <span>Nueva</span>
+          </button>
+          <button class="tab-button" data-tab="history">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>Notas</span>
+          </button>
+          <button class="tab-button" data-tab="sync">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Cuenta</span>
+          </button>
+        </nav>
+      </aside>
     </div>
   </div>
-  <script type="module" src="popup.js"></script>
+  <div id="status" class="status"></div>
+  <script type="module" src="js/popup.js"></script>
 </body>
 </html>
+
