@@ -49,6 +49,12 @@ function switchTab(targetTab) {
   tabPanels.forEach(panel => {
     panel.classList.toggle('active', panel.id === `tab-${targetTab}`);
   });
+  
+  // Add a small bounce effect to the active panel
+  const activePanel = document.getElementById(`tab-${targetTab}`);
+  activePanel.style.animation = 'none';
+  activePanel.offsetHeight; // trigger reflow
+  activePanel.style.animation = 'fadeIn 0.4s ease-out';
 }
 
 tabs.forEach(tab => {
@@ -65,8 +71,9 @@ function createNoteListItem(note) {
     editingId = note.id;
     titleEl.value = note.title;
     contentEl.value = note.content;
-    editorTitleEl.textContent = 'Editando nota';
-    newBtn.innerHTML = '❌ Cancelar'; // Cambiamos el texto y el icono
+    editorTitleEl.textContent = 'Editar nota';
+    newBtn.innerHTML = 'Cancelar'; 
+    newBtn.classList.add('danger-text');
     status('Editando nota...', 'info', -1);
     switchTab('create');
     titleEl.focus();
@@ -76,25 +83,22 @@ function createNoteListItem(note) {
   const li = document.createElement('li');
   li.className = `noteItem ${note.id === editingId ? 'editing' : ''}`;
   
-  const titleRow = document.createElement('div');
-  titleRow.className = 'noteTitle';
-
-  const tspan = document.createElement('span');
-  tspan.textContent = note.title || '(Sin título)';
-
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'fs-small text-muted'; // Usar clases en lugar de estilos en línea
-  const date = new Date(note.updatedAt);
-  timeSpan.textContent = date.toLocaleString();
-
-  titleRow.appendChild(tspan);
-  titleRow.appendChild(timeSpan);
-  titleRow.addEventListener('click', openNoteForEditing);
+  const title = document.createElement('div');
+  title.className = 'noteTitle';
+  title.textContent = note.title || '(Sin título)';
 
   const text = document.createElement('div');
   text.className = 'noteText';
   text.textContent = note.content || '';
+
+  const dateEl = document.createElement('div');
+  dateEl.className = 'noteDate';
+  const date = new Date(note.updatedAt);
+  dateEl.textContent = date.toLocaleString();
+
+  title.addEventListener('click', openNoteForEditing);
   text.addEventListener('click', openNoteForEditing);
+  dateEl.addEventListener('click', openNoteForEditing);
   
   const controls = document.createElement('div');
   controls.className = 'noteControls';
@@ -104,7 +108,7 @@ function createNoteListItem(note) {
   openBtn.title = 'Editar nota';
   openBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
   openBtn.addEventListener('click', (e) => {
-    e.stopPropagation(); // Evita que el evento de clic se propague al li
+    e.stopPropagation(); 
     openNoteForEditing();
   });
   
@@ -125,8 +129,9 @@ function createNoteListItem(note) {
   controls.appendChild(openBtn);
   controls.appendChild(delBtn);
 
-  li.appendChild(titleRow);
+  li.appendChild(title);
   li.appendChild(text);
+  li.appendChild(dateEl);
   li.appendChild(controls);
 
   return li;
@@ -143,7 +148,12 @@ async function renderNotes(filterText = '') {
   );
 
   if (filteredNotes.length === 0) {
-    notesList.innerHTML = '<li class="text-muted">No hay notas todavía.</li>';
+    notesList.innerHTML = `
+      <div class="empty-state" style="text-align: center; padding: 40px; opacity: 0.5;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px;"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="15" y2="17"></line><line x1="9" y1="9" x2="10" y2="9"></line></svg>
+        <p>No se encontraron notas</p>
+      </div>
+    `;
     return;
   }
   // newest first
@@ -170,7 +180,8 @@ function clearEditor() {
   titleEl.value = '';
   contentEl.value = '';
   editorTitleEl.textContent = 'Nueva Nota';
-  newBtn.innerHTML = '🧹 Limpiar';
+  newBtn.innerHTML = 'Limpiar';
+  newBtn.classList.remove('danger-text');
   titleEl.classList.remove('invalid');
   contentEl.classList.remove('invalid');
   status('Editor limpio.', 'info');
@@ -246,6 +257,11 @@ saveBtn.addEventListener('click', async () => {
 
     clearEditor();
     switchTab('history');
+    
+    // Success feedback on the new active tab or a notification
+    status('¡Nota guardada con éxito!', 'success');
+  } catch (error) {
+    status('Error al guardar: ' + error.message, 'danger');
   } finally {
     setButtonLoading(saveBtn, false);
   }
@@ -352,7 +368,7 @@ importFileInput.addEventListener('change', (e) => {
 });
 
 contentEl.addEventListener('input', () => {
-  charCounterEl.textContent = `${contentEl.value.length} caracteres`;
+  charCounterEl.textContent = contentEl.value.length;
 });
 
 /**
