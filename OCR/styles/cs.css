@@ -1372,3 +1372,9 @@ table { border-collapse: collapse; border-spacing: 0; }
 
 
 
+
+    #copyfish-close-button {
+        cursor: pointer !important;
+        z-index: 999999 !important;
+        pointer-events: auto !important;
+    }

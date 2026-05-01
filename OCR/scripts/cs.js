@@ -1436,18 +1436,29 @@ return false;
 
 
 
-	function onOCRClose(e) {
-		e && e.stopPropagation();
-		if (OCRTranslator.state === 'disabled') {
-			return true;
+	window.onOCRClose = function(e) {
+		if (e) {
+			e.stopImmediatePropagation();
+			e.preventDefault();
 		}
-		$('.ocrext-wrapper').removeClass('ocrext-wrapper-minimized ocrext-wrapper-nano');
-		$('.ocrext-nano-title').css('display', ''); // clear inline style from nano mode
+
+		// Eliminar físicamente el elemento de la página
+		$('.ocrext-wrapper').remove();
+		
+		// Limpieza adicional
+		$('body').removeClass('ocrext-overlay ocrext-ch');
 		OCRTranslator.disable();
+		
 		browser.runtime.sendMessage({
 			evt: 'capture-done'
 		});
+
+		// Si estamos en una página de la extensión (como el modo pestaña), cerrar la ventana
+		if (window.location.protocol.indexOf('-extension:') !== -1) {
+			window.close();
+		}
 	}
+	const onOCRClose = window.onOCRClose;
 
 
 	function fireCopy(text) {
@@ -1541,6 +1552,20 @@ return false;
 			$ready = _bootStrapResources();
 			// listen to runtime messages from other pages, mainly the background page
 			browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
+				// Global click listener for the close button
+				if (!window._closeListenerAdded) {
+					window.addEventListener('click', function(e) {
+						const closeBtn = e.target.closest('#copyfish-close-button');
+						if (closeBtn) {
+							e.preventDefault();
+							e.stopImmediatePropagation();
+							$('.ocrext-wrapper').remove();
+							$('body').removeClass('ocrext-overlay ocrext-ch');
+							if (typeof onOCRClose === 'function') onOCRClose();
+						}
+					}, true);
+					window._closeListenerAdded = true;
+				}
 				if (sender.tab) {
 					return true;
 				}
@@ -1803,6 +1828,8 @@ _initialize: function () {
 			$('body').append(HTMLSTRCOPY);
 			
 			// Set icons
+			
+			// Set icons
 			$('#deepl_translate_button img').attr('src', browser.runtime.getURL('OCR/images/deepl.jpg'));
 			$('#popup_translate_button img').attr('src', browser.runtime.getURL('OCR/images/translate.png'));
 
@@ -1871,7 +1898,7 @@ _initialize: function () {
 		 	.on('click', '.ocrext-ocr-recapture', onOCRRecapture)
 		 	.on('click', '.ocrext-ocr-sendocr', onOCRRedo)
 		 	.on('click', '.ocrext-ocr-desktop-recapture', onOcrDesktopRecapture)
-		 	.on('click', '.ocrext-closeToolbar-link', onOCRClose)
+		 	.on('click', '#copyfish-close-button, .ocrext-closeToolbar-link', onOCRClose)
 		 	.on('click', '.ocrext-ocr-copy', onOCRCopy)
 		 	.on('click', '.ocrext-engine-btn', function (e) {
 		 		e.stopPropagation();
@@ -1898,8 +1925,10 @@ _initialize: function () {
 		 			$('.ocrext-engine-panel').removeClass('open');
 		 		}
 		 	})
-		 	.on('click', 'header.ocrext-header', function () {
+		 	.on('click', 'header.ocrext-header', function (e) {
 		 		/*click handler for header — cycles: full → minimized → nano → full*/
+		 		if ($(e.target).closest('a').length) return; // Do not toggle if clicking settings/close icons
+
 		 		var $wrapper = $('.ocrext-wrapper');
 		 		if ($wrapper.hasClass('ocrext-wrapper-nano')) {
 		 			// stage 3 → stage 1: full — clear nano-title inline style so CSS display:none wins
