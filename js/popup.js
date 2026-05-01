@@ -584,10 +584,19 @@ if (pinBtn) {
 if (ocrBtn) {
   ocrBtn.addEventListener('click', async () => {
     try {
-      status('Selecciona el área de texto en la página...', 'info', -1);
-      
       // 1. Obtener la pestaña activa
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // Validar si la URL es permitida (evitar errores en páginas internas del navegador)
+      const restrictedPrefixes = ['chrome://', 'edge://', 'about:', 'chrome-extension://', 'https://chrome.google.com/webstore'];
+      const isRestricted = !tab || !tab.url || restrictedPrefixes.some(prefix => tab.url.startsWith(prefix));
+
+      if (isRestricted) {
+        status('El navegador no permite el uso de OCR en esta página.', 'danger', 5000);
+        return;
+      }
+
+      status('Selecciona el área de texto en la página...', 'info', -1);
       
       // 2. Inyectar el script de selección si no está inyectado
       await chrome.scripting.executeScript({
@@ -653,7 +662,12 @@ if (ocrBtn) {
 
     } catch (error) {
       console.error("Error en OCR Selectivo:", error);
-      status('Error: ' + error.message, 'danger', 5000);
+      // Capturar errores específicos de permisos del navegador
+      if (error.message.includes('Cannot access') || error.message.includes('privileged') || error.message.includes('extension context')) {
+        status('El navegador no permite el uso de OCR en esta página.', 'danger', 5000);
+      } else {
+        status('Error: ' + error.message, 'danger', 5000);
+      }
     } finally {
       setButtonLoading(ocrBtn, false);
     }
