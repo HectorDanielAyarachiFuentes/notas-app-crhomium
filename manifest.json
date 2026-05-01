@@ -23,8 +23,7 @@
     "activeTab",
     "scripting",
     "notifications",
-    "contextMenus",
-    "offscreen"
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>"
