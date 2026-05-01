@@ -4,6 +4,9 @@ import browserAPI from './browser-api.js';
 const DRIVE_API_URL = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3';
 const NOTES_FILE_NAME = 'notes_extension_data.json';
+const TOKEN_CACHE_KEY = 'cached_oauth_token';
+
+let memoryToken = null; // Caché en memoria para la sesión actual del popup
 
 /**
  * Obtiene un token de autenticación de OAuth2 mediante WebAuthFlow.
@@ -34,7 +37,7 @@ function getAuthTokenWebFlow(interactive) {
     browserAPI.identity.launchWebAuthFlow({
       url: authUrl,
       interactive: interactive
-    }, (responseUrl) => {
+    }, async (responseUrl) => {
       if (browserAPI.runtime.lastError) {
         return reject(new Error(`WebAuthFlow Error: ${browserAPI.runtime.lastError.message}`));
       }
@@ -46,6 +49,9 @@ function getAuthTokenWebFlow(interactive) {
         const params = new URLSearchParams(url.hash.substring(1));
         const token = params.get('access_token');
         if (token) {
+          // Guardar en caché
+          memoryToken = token;
+          await browserAPI.storage.local.set({ [TOKEN_CACHE_KEY]: token });
           resolve(token);
         } else {
           reject(new Error("No access token found in response"));
@@ -63,16 +69,32 @@ function getAuthTokenWebFlow(interactive) {
  * @param {boolean} interactive - Si se debe mostrar un popup de login al usuario.
  */
 function getAuthToken(interactive = false) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // Añadimos una guarda para asegurarnos de que la API existe.
     if (!browserAPI || !browserAPI.identity) {
       return reject(new Error("La API de identidad no está disponible. Asegúrate de ejecutar esto como una extensión."));
     }
 
+    // 1. Intentar usar el token en memoria si no es una solicitud interactiva
+    if (!interactive && memoryToken) {
+      console.log("Usando token de memoria...");
+      return resolve(memoryToken);
+    }
+
+    // 2. Intentar recuperar el token del almacenamiento local
+    if (!interactive) {
+      const storage = await browserAPI.storage.local.get(TOKEN_CACHE_KEY);
+      if (storage[TOKEN_CACHE_KEY]) {
+        console.log("Usando token de almacenamiento local...");
+        memoryToken = storage[TOKEN_CACHE_KEY];
+        return resolve(memoryToken);
+      }
+    }
+
     console.log(`getAuthToken, interactive: ${interactive}`);
     
     if (browserAPI.identity.getAuthToken) {
-      browserAPI.identity.getAuthToken({ interactive }, (token) => {
+      browserAPI.identity.getAuthToken({ interactive }, async (token) => {
         if (browserAPI.runtime.lastError) {
           const errorMsg = browserAPI.runtime.lastError.message || '';
           console.log(`getAuthToken nativo falló: ${errorMsg}`);
@@ -85,6 +107,8 @@ function getAuthToken(interactive = false) {
           }
         } else {
           console.log("Token obtenido con éxito (nativo).");
+          memoryToken = token;
+          await browserAPI.storage.local.set({ [TOKEN_CACHE_KEY]: token });
           resolve(token);
         }
       });
@@ -145,6 +169,10 @@ async function driveApiRequest(url, options, initialToken) {
 
   if (response.status === 401) {
     console.warn("Token inválido o expirado. Reintentando con un nuevo token...");
+    // Limpiar caché al recibir 401 para forzar la obtención de uno nuevo
+    memoryToken = null;
+    await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
+    
     token = await getAuthToken(false); // Obtener nuevo token no interactivamente
     options.headers['Authorization'] = `Bearer ${token}`;
     response = await fetch(url, options); // Reintentar la solicitud
@@ -278,6 +306,10 @@ export async function removeAuthToken() {
     // Primero, obtenemos el token actual para poder invalidarlo.
     const token = await getAuthToken(false);
     if (token) {
+      // Limpiar caché local
+      memoryToken = null;
+      await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
+
       // Invalidamos el token en la caché del navegador, si está soportado.
       if (browserAPI.identity.removeCachedAuthToken) {
         try {
