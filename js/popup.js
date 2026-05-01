@@ -38,6 +38,7 @@ const importBtn = document.getElementById('import-btn');
 const importFileInput = document.getElementById('import-file-input');
 const syncTabLoginBtn = document.getElementById('sync-tab-login-btn');
 const syncTabExportBtn = document.getElementById('sync-tab-export-btn');
+const pinBtn = document.getElementById('pin-btn');
 
 let editingId = null;
 let statusTimeout = null;
@@ -542,6 +543,24 @@ async function handleSyncTabActivation() {
 if (loginBtn) loginBtn.addEventListener('click', handleSyncTabActivation);
 if (syncTabLoginBtn) syncTabLoginBtn.addEventListener('click', handleSyncTabActivation);
 
+if (pinBtn) {
+  pinBtn.addEventListener('click', async () => {
+    try {
+      // Intentar abrir el panel lateral
+      if (chrome && chrome.sidePanel) {
+        // En MV3, esto requiere el permiso 'sidePanel'
+        await chrome.sidePanel.open({ windowId: (await chrome.windows.getCurrent()).id });
+        window.close(); // Cerrar el popup al abrir el panel lateral
+      } else {
+        status('El panel lateral no es compatible con este navegador.', 'danger');
+      }
+    } catch (error) {
+      console.error("Error al abrir el panel lateral:", error);
+      status('Error: ' + error.message, 'danger');
+    }
+  });
+}
+
 uploadBtn.addEventListener('click', async () => {
   if (!confirm('Esto sobrescribirá las notas en Google Drive con tus notas locales. ¿Deseas continuar?')) return;
   setButtonLoading(uploadBtn, true);
@@ -717,6 +736,14 @@ async function autoSyncNotes() {
  * Se ejecuta cuando el DOM está completamente cargado.
  */
 async function init() {
+  // Ajustar estilos si estamos en el panel lateral (no en un popup)
+  // En el panel lateral, el width/height suele ser flexible.
+  if (window.innerWidth > 500 || !window.matchMedia('(max-width: 450px)').matches) {
+     // Si el ancho es mayor al del popup, quitamos los límites fijos
+     document.body.style.width = '100%';
+     document.body.style.height = '100vh';
+  }
+
   // 0. Cargar configuración de auto-sincronización
   const { autoSyncEnabled } = await browserAPI.storage.sync.get({ autoSyncEnabled: false });
   isAutoSyncEnabled = autoSyncEnabled;

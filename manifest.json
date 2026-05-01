@@ -18,8 +18,12 @@
   "permissions": [
     "storage",
     "identity",
-    "downloads"
+    "downloads",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
   "oauth2": {
     "client_id": "262441099949-kf9fcfn7o5eg6tmq9c9gh82jjnhg9q1b.apps.googleusercontent.com",
     "scopes": [
