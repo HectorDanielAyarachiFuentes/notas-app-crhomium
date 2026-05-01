@@ -26,7 +26,7 @@ async function cropImage(dataUrl, coords) {
       canvas.width = sw;
       canvas.height = sh;
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-      resolve(canvas.toDataURL('image/png'));
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
     img.onerror = () => reject(new Error("Error al cargar la imagen en offscreen"));
     img.src = dataUrl;

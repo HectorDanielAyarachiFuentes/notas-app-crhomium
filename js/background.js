@@ -56,13 +56,13 @@ async function handleAutoSave(data) {
     await saveNotes(notes);
 
     // Notificación visual (Ruta corregida sin / inicial)
-    browserAPI.notifications.create({
+    browserAPI.notifications.create('save-' + Date.now(), {
       type: 'basic',
-      iconUrl: 'icons/icon-48.png', 
+      iconUrl: '/icons/icon-48.png', 
       title: '¡Nota Guardada!',
       message: data.content.length > 60 ? data.content.substring(0, 60) + '...' : data.content,
       silent: true
-    });
+    }).catch(err => console.warn('Error al mostrar notificación:', err));
   } catch (error) {
     console.error('Error al auto-guardar nota:', error);
   }
@@ -88,7 +88,7 @@ async function handleBackgroundOCR(tab) {
       return { success: false, cancelled: true };
     }
 
-    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
     const croppedDataUrl = await processImageOffscreen(fullDataUrl, selection);
     const extractedText = await callOCRSpace(croppedDataUrl);
 
@@ -107,15 +107,15 @@ async function handleBackgroundOCR(tab) {
       });
       await saveNotes(notes);
 
-      browserAPI.notifications.create({
+      browserAPI.notifications.create('ocr-' + Date.now(), {
         type: 'basic',
-        iconUrl: 'icons/icon-48.png',
+        iconUrl: '/icons/icon-48.png',
         title: 'OCR Finalizado',
         message: 'El texto ha sido guardado en tus notas.'
-      });
+      }).catch(err => console.warn('Error al mostrar notificación OCR:', err));
 
       isProcessingOCR = false;
-      return { success: true, text: extractedText };
+      return { success: true, text: extractedText + footer };
     } else {
       throw new Error('No se detectó texto.');
     }
