@@ -22,16 +22,99 @@ browserAPI.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Escuchar mensajes del monitor de portapapeles
+// Escuchar mensajes del monitor de portapapeles y el módulo OCR
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // --- Acciones de Notas Pro ---
   if (message.action === 'autoSaveNote') {
     handleAutoSave(message);
     sendResponse({ success: true });
-  } else if (message.action === 'performBackgroundOCR') {
+    return true;
+  } 
+  
+  if (message.action === 'performBackgroundOCR') {
     handleBackgroundOCR(message.tab).then(sendResponse);
     return true;
   }
-  return true;
+
+  // --- Eventos del Módulo OCR (Copyfish) ---
+  if (message.evt === '_bootStrapResources') {
+    (async () => {
+      try {
+        const configRes = await fetch(chrome.runtime.getURL('OCR/config/config.json'));
+        const config = await configRes.text();
+        const htmlRes = await fetch(chrome.runtime.getURL('OCR/dialog.html'));
+        const htmlStr = await htmlRes.text();
+        sendResponse({ config, htmlStr });
+      } catch (e) {
+        console.error('Error in _bootStrapResources:', e);
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.evt === '_bootStrapMessageDialog') {
+    (async () => {
+      try {
+        const htmlRes = await fetch(chrome.runtime.getURL('OCR/message-dialog.html'));
+        const htmlStr = await htmlRes.text();
+        sendResponse({ htmlStr });
+      } catch (e) {
+        console.error('Error in _bootStrapMessageDialog:', e);
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.evt === 'capture-screen') {
+    chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 70 }, (dataURL) => {
+      chrome.tabs.getZoom(sender.tab.id, (zf) => {
+        sendResponse({ dataURL, zf });
+      });
+    });
+    return true;
+  }
+
+  if (message.evt === 'saveOCRText') {
+    handleAutoSave({
+      content: message.text,
+      title: (sender.tab && sender.tab.title) || "OCR Extraído",
+      url: (sender.tab && sender.tab.url) || ""
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.evt === 'ready' || message.evt === 'capture-done') {
+    isProcessingOCR = false;
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.evt === 'get-best-server') {
+    (async () => {
+      try {
+        const configRes = await fetch(chrome.runtime.getURL('OCR/config/config.json'));
+        const config = await configRes.json();
+        const server = config.ocr_api_list[0]; // Por ahora devolvemos el primero
+        sendResponse({ server: server });
+      } catch (e) {
+        console.error('Error en get-best-server:', e);
+        sendResponse({ server: { id: "1" } }); // Fallback
+      }
+    })();
+    return true;
+  }
+
+  if (message.evt === 'set-server-responsetime') {
+    console.log('OCR Server response time updated:', message);
+    sendResponse({ success: true });
+    return true;
+  }
+
+  console.log('Mensaje no manejado:', message);
+  return false;
 });
 
 async function handleAutoSave(data) {
@@ -55,7 +138,7 @@ async function handleAutoSave(data) {
     notes.push(newNote);
     await saveNotes(notes);
 
-    // Notificación visual (Ruta corregida sin / inicial)
+    // Notificación visual
     browserAPI.notifications.create('save-' + Date.now(), {
       type: 'basic',
       iconUrl: '/icons/icon-48.png', 
@@ -68,7 +151,7 @@ async function handleAutoSave(data) {
   }
 }
 
-// --- OCR Logic ---
+// --- OCR Logic (Enhanced with Copyfish) ---
 let isProcessingOCR = false;
 
 async function handleBackgroundOCR(tab) {
@@ -76,81 +159,44 @@ async function handleBackgroundOCR(tab) {
   isProcessingOCR = true;
 
   try {
+    // Verificar disponibilidad del tab
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['js/content-script.js'] });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => true });
     } catch (e) {
-      throw new Error('No se puede acceder a esta página por restricciones del navegador.');
-    }
-
-    const selection = await chrome.tabs.sendMessage(tab.id, { action: "startSelection" });
-    if (!selection || selection.cancelled) {
       isProcessingOCR = false;
-      return { success: false, cancelled: true };
+      throw new Error('No se puede acceder a esta página por restricciones del navegador (ej. páginas internas de Chrome).');
     }
 
-    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 60 });
-    const croppedDataUrl = await processImageOffscreen(fullDataUrl, selection);
-    const extractedText = await callOCRSpace(croppedDataUrl);
+    // Inyectar polyfill y dependencias
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      files: [
+        'OCR/scripts/crossbrowser.js',
+        'OCR/scripts/jquery.min.js',
+        'OCR/scripts/material.min.js',
+        'OCR/scripts/overlay.js',
+        'OCR/scripts/cs.js'
+      ]
+    });
 
-    if (extractedText) {
-      const notes = await getNotes();
-      const now = Date.now();
-      const footer = `\n\n--- \nFuente: ${tab.url}`;
-      
-      notes.push({
-        id: crypto.randomUUID(),
-        title: tab.title || 'Nota de OCR',
-        content: extractedText + footer,
-        createdAt: now,
-        updatedAt: now,
-        sourceUrl: tab.url
-      });
-      await saveNotes(notes);
+    await chrome.scripting.insertCSS({
+      target: { tabId: tab.id, allFrames: true },
+      files: [
+        'OCR/styles/material.min.css',
+        'OCR/styles/cs.css'
+      ]
+    });
 
-      browserAPI.notifications.create('ocr-' + Date.now(), {
-        type: 'basic',
-        iconUrl: '/icons/icon-48.png',
-        title: 'OCR Finalizado',
-        message: 'El texto ha sido guardado en tus notas.'
-      }).catch(err => console.warn('Error al mostrar notificación OCR:', err));
+    // Esperar un momento para la inicialización de los scripts
+    await new Promise(r => setTimeout(r, 500));
 
-      isProcessingOCR = false;
-      return { success: true, text: extractedText + footer };
-    } else {
-      throw new Error('No se detectó texto.');
-    }
+    // Activar selección
+    chrome.tabs.sendMessage(tab.id, { evt: 'enableselection' });
+    
+    return { success: true };
   } catch (error) {
     isProcessingOCR = false;
     return { success: false, error: error.message };
   }
-}
-
-async function processImageOffscreen(dataUrl, coords) {
-  if (!(await hasOffscreenDocument())) {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['DOM_SCRAPING'],
-      justification: 'OCR Image Processing'
-    });
-  }
-  const response = await chrome.runtime.sendMessage({ action: 'cropImage', dataUrl, coords });
-  if (response.success) return response.croppedDataUrl;
-  throw new Error(response.error);
-}
-
-async function hasOffscreenDocument() {
-  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
-  return contexts.length > 0;
-}
-
-async function callOCRSpace(dataUrl) {
-  const formData = new FormData();
-  formData.append('base64image', dataUrl);
-  formData.append('language', 'spa');
-  formData.append('apikey', 'helloworld');
-  const response = await fetch('https://api.ocr.space/parse/image', { method: 'POST', body: formData });
-  const result = await response.json();
-  if (result.IsErroredOnProcessing) throw new Error(result.ErrorMessage[0]);
-  return result.ParsedResults[0].ParsedText;
 }
 

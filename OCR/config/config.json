@@ -1,0 +1,46 @@
+{
+    "defaults": {
+        "visualCopyOCRLang": "spa",
+        "visualCopyAutoTranslate": false,
+        "visualCopyOCRFontSize": "16px",
+        "visualCopySupportDicts": false,
+        "copyAfterProcess": true,
+        "visualCopyQuickSelectLangs": [],
+        "visualCopyTextOverlay": true,
+        "openGrabbingScreenHotkey": 49,
+        "closePanelHotkey": 50,
+        "copyTextHotkey": 51,
+        "ocrEngine": "OcrSpace",
+        "copyType": "Text",
+        "transitionEngine": false,
+        "status": "Pro",
+        "useTableOcr": false,
+        "useDefaultDesktopOcr": false
+    },
+    "ocr_api_list": [
+        {
+            "id": "1",
+            "ocr_api_key": "helloworld",
+            "ocr_api_url": "https://api.ocr.space/parse/image"
+        },
+        {
+            "id": "2",
+            "ocr_api_key": "helloworld",
+            "ocr_api_url": "https://api.ocr.space/parse/image"
+        }
+    ],
+    "ocr_server_reset_time": 86400,
+    "ocr_timeout": 30000,
+    "ocr_languages": [
+        { "lang": "eng", "name": "English", "short": "EN" },
+        { "lang": "spa", "name": "Spanish", "short": "ES" },
+        { "lang": "fre", "name": "French", "short": "FR" },
+        { "lang": "ger", "name": "German", "short": "DE" },
+        { "lang": "ita", "name": "Italian", "short": "IT" },
+        { "lang": "por", "name": "Portuguese", "short": "PT" },
+        { "lang": "rus", "name": "Russian", "short": "RU" },
+        { "lang": "jpn", "name": "Japanese", "short": "JP" },
+        { "lang": "kor", "name": "Korean", "short": "KO" },
+        { "lang": "chs", "name": "Chinese", "short": "CN" }
+    ]
+}

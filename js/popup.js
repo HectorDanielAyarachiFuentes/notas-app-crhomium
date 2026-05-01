@@ -459,12 +459,16 @@ if (ocrBtn) {
       const response = await chrome.runtime.sendMessage({ action: 'performBackgroundOCR', tab });
       
       if (response.success) {
-        contentEl.value += (contentEl.value ? '\n\n' : '') + response.text;
-        if (!titleEl.value) titleEl.value = tab.title || 'Nota OCR';
-        updateCharCount();
-        triggerAutoSave();
-        status('¡OCR completado!', 'success');
-        switchTab('create');
+        if (response.text) {
+          contentEl.value += (contentEl.value ? '\n\n' : '') + response.text;
+          if (!titleEl.value) titleEl.value = tab.title || 'Nota OCR';
+          updateCharCount();
+          triggerAutoSave();
+          status('¡OCR completado!', 'success');
+          switchTab('create');
+        } else {
+          status('Iniciando selección... El texto se guardará automáticamente al finalizar.', 'info', 5000);
+        }
       } else if (!response.cancelled) {
         status('Error OCR: ' + response.error, 'danger');
       } else {
@@ -542,7 +546,7 @@ async function loginToDrive() {
     return true;
   } catch (error) {
     updateSyncUI(false);
-    if (!error.message.toLowerCase().includes('user did not approve access')) {
+    if (error && error.message && !error.message.toLowerCase().includes('user did not approve access')) {
       status(`Error de conexión: ${error.message}`, 'danger', 5000);
     }
     return false;

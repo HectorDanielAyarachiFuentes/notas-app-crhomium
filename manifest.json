@@ -51,6 +51,19 @@
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "OCR/dialog.html",
+        "OCR/message-dialog.html",
+        "OCR/config/config.json",
+        "OCR/styles/material.min.css",
+        "OCR/styles/cs.css",
+        "OCR/images/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
 
