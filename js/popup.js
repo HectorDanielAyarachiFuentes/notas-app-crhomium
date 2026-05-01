@@ -739,6 +739,13 @@ async function init() {
   }
 
   await checkInitialSyncStatus();
+
+  // Soporte para apertura directa de vistas mediante parámetros de URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const view = urlParams.get('view');
+  if (view === 'settings' && settingsDropdown) {
+    settingsDropdown.style.display = 'block';
+  }
 }
 
 browserAPI.storage.onChanged.addListener((changes, area) => {

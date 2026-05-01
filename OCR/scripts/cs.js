@@ -1573,17 +1573,7 @@ return false;
 						const openTabBtn = e.target.closest('.ocrext-open-tab-link');
 						if (openTabBtn) {
 							e.preventDefault(); e.stopImmediatePropagation();
-							let $canvas = $('#ocrext-can');
-							let $canvasOrig = $('#ocrext-canOrig');
-							browser.runtime.sendMessage({
-								evt: 'open-window',
-								url: browser.runtime.getURL('OCR/screencapture.html'),
-								data: $canvas.get(0).toDataURL(),
-								dataOrig: $canvasOrig.get(0).toDataURL(),
-								ocrText: $('.ocrext-ocr-message').val(),
-								overlayInfo: OCRTranslator.overlayInfo,
-								currentZoomLevel: devicePixelRatio
-							});
+							browser.runtime.sendMessage({ evt: 'open-app' });
 							return;
 						}
 

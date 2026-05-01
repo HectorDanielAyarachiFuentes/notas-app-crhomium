@@ -113,6 +113,24 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+	if (message.evt === 'open-window') {
+		chrome.tabs.create({ url: message.url });
+		sendResponse({ success: true });
+		return true;
+	}
+
+	if (message.evt === 'open-settings') {
+		chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?view=settings') });
+		sendResponse({ success: true });
+		return true;
+	}
+
+	if (message.evt === 'open-app') {
+		chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') });
+		sendResponse({ success: true });
+		return true;
+	}
+
   console.log('Mensaje no manejado:', message);
   return false;
 });
