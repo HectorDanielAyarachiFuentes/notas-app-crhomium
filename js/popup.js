@@ -39,6 +39,7 @@ const importFileInput = document.getElementById('import-file-input');
 const syncTabLoginBtn = document.getElementById('sync-tab-login-btn');
 const syncTabExportBtn = document.getElementById('sync-tab-export-btn');
 const pinBtn = document.getElementById('pin-btn');
+const ocrBtn = document.getElementById('ocr-btn');
 
 let editingId = null;
 let statusTimeout = null;
@@ -558,6 +559,112 @@ if (pinBtn) {
       console.error("Error al abrir el panel lateral:", error);
       status('Error: ' + error.message, 'danger');
     }
+  });
+}
+
+if (ocrBtn) {
+  ocrBtn.addEventListener('click', async () => {
+    try {
+      status('Selecciona el área de texto en la página...', 'info', -1);
+      
+      // 1. Obtener la pestaña activa
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      
+      // 2. Inyectar el script de selección si no está inyectado
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['js/content-script.js']
+      });
+
+      // 3. Iniciar la selección y esperar coordenadas
+      const selection = await chrome.tabs.sendMessage(tab.id, { action: "startSelection" });
+      
+      if (!selection || selection.cancelled || selection.width < 5) {
+        status('Selección cancelada.', 'info');
+        return;
+      }
+
+      setButtonLoading(ocrBtn, true, 'Procesando...');
+      status('Capturando área seleccionada...', 'info', -1);
+
+      // 4. Capturar la pestaña completa
+      const fullDataUrl = await new Promise((resolve, reject) => {
+        chrome.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(dataUrl);
+        });
+      });
+
+      // 5. Recortar la imagen usando Canvas
+      const croppedDataUrl = await cropImage(fullDataUrl, selection);
+
+      status('Extrayendo texto del área...', 'info', -1);
+      
+      // 6. Enviar a la API de OCR.space
+      const formData = new FormData();
+      formData.append('base64image', croppedDataUrl);
+      formData.append('language', 'spa');
+      formData.append('apikey', 'helloworld');
+
+      const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.IsErroredOnProcessing) {
+        throw new Error(result.ErrorMessage[0]);
+      }
+
+      const extractedText = result.ParsedResults[0].ParsedText;
+      
+      if (extractedText) {
+        const currentContent = contentEl.value;
+        contentEl.value = currentContent + (currentContent ? '\n\n' : '') + extractedText;
+        updateCharCount();
+        triggerAutoSave();
+        status('Texto extraído con éxito.', 'success');
+        
+        // Volver a la pestaña de creación si no estábamos en ella
+        switchTab('create');
+      } else {
+        status('No se encontró texto en el área seleccionada.', 'info');
+      }
+
+    } catch (error) {
+      console.error("Error en OCR Selectivo:", error);
+      status('Error: ' + error.message, 'danger', 5000);
+    } finally {
+      setButtonLoading(ocrBtn, false);
+    }
+  });
+}
+
+/**
+ * Recorta una imagen base64 usando coordenadas.
+ */
+async function cropImage(dataUrl, coords) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Ajustar por el devicePixelRatio (Zoom de pantalla)
+      const dpr = coords.devicePixelRatio || 1;
+      const sx = coords.x * dpr;
+      const sy = coords.y * dpr;
+      const sw = coords.width * dpr;
+      const sh = coords.height * dpr;
+
+      canvas.width = sw;
+      canvas.height = sh;
+      
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.src = dataUrl;
   });
 }
 

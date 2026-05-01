@@ -19,7 +19,9 @@
     "storage",
     "identity",
     "downloads",
-    "sidePanel"
+    "sidePanel",
+    "activeTab",
+    "scripting"
   ],
   "side_panel": {
     "default_path": "popup.html"
