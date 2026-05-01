@@ -1,7 +1,21 @@
-// popup.js - lógica para guardar/editar/eliminar notas usando chrome.storage.local
 import { getNotes, saveNotes } from './utils.js';
 import browserAPI from './browser-api.js';
 import { uploadNotesToDrive, downloadNotesFromDrive, getAuthTokenAndInfo, removeAuthToken } from './drive-sync.js';
+
+// Detección de Panel Lateral vs Popup
+function detectSidePanel() {
+  // Los popups en Chrome suelen tener un tamaño fijo. 
+  // Si las dimensiones son distintas, es probable que sea el panel lateral.
+  const isSide = window.innerWidth > 450 || window.innerHeight > 600;
+  if (isSide) {
+    document.body.classList.add('is-side-panel');
+  } else {
+    document.body.classList.remove('is-side-panel');
+  }
+}
+
+detectSidePanel();
+window.addEventListener('resize', detectSidePanel);
 
 const titleEl = document.getElementById('title');
 const contentEl = document.getElementById('content');

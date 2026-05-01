@@ -102,22 +102,71 @@ body {
   flex-direction: column;
 }
 
+body.is-side-panel {
+  width: 100%;
+  height: 100vh;
+}
+
 .container {
-  padding: 16px;
   height: 100%;
   display: flex;
   flex-direction: column;
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+  overflow: hidden;
+}
+
+.main-layout {
+  display: flex;
+  flex-direction: column-reverse;
+  height: 100%;
+  padding: 16px;
+  gap: 16px;
+}
+
+body.is-side-panel .main-layout {
+  flex-direction: row-reverse;
+  padding: 0;
+  gap: 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+body.is-side-panel .sidebar-nav {
+  width: 72px;
+  min-width: 72px;
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border-color);
+  padding: 20px 8px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+  z-index: 10;
+}
+
+body.is-side-panel .tab-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
 }
 
 /* Header & Profile */
 .header-bar {
-  padding-bottom: 20px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  min-height: 70px;
+}
+
+body.is-side-panel .header-bar {
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
 }
 
 .header-content {
@@ -125,6 +174,16 @@ body {
   align-items: center;
   gap: 14px;
   animation: slideDown 0.4s ease-out;
+}
+
+body.is-side-panel .header-content {
+  flex-direction: column;
+  text-align: center;
+  gap: 8px;
+}
+
+body.is-side-panel .user-info {
+  display: none; /* Ocultar texto en sidebar estrecha para mejor UX */
 }
 
 #user-avatar {
@@ -188,6 +247,11 @@ body {
 .header-actions {
   display: flex;
   gap: 10px;
+}
+
+body.is-side-panel .header-actions {
+  flex-direction: column;
+  gap: 12px;
 }
 
 .btn-icon {
@@ -364,6 +428,23 @@ body {
   margin-bottom: 20px;
   box-shadow: var(--shadow-sm);
   position: relative;
+}
+
+body.is-side-panel .tabs {
+  flex-direction: column;
+  width: 100%;
+  background: transparent;
+  box-shadow: none;
+  gap: 8px;
+  margin-bottom: 0;
+  padding: 0;
+}
+
+body.is-side-panel .tab-button {
+  width: 100%;
+  padding: 12px 4px;
+  font-size: 11px;
+  text-align: center;
 }
 
 .tab-button {
