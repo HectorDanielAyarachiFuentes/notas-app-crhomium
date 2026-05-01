@@ -522,10 +522,7 @@ async function loginToDrive() {
   } catch (error) {
     console.error("Error durante el login interactivo:", error);
     updateSyncUI(false); // Mostrar estado desconectado
-    if (error.message.includes('Function unsupported')) {
-      const operaErrorMsg = "Error en Opera: Instala el complemento 'Install Chrome Extensions' y reinicia el navegador.";
-      status(operaErrorMsg, 'danger', 10000);
-    } else if (!error.message.includes('user did not approve access')) {
+    if (!error.message.toLowerCase().includes('user did not approve access')) {
       // No mostrar error si el usuario simplemente cerró la ventana de login
       status(`Error de conexión: ${error.message}`, 'danger', 5000);
     }

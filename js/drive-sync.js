@@ -6,6 +6,58 @@ const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3';
 const NOTES_FILE_NAME = 'notes_extension_data.json';
 
 /**
+ * Obtiene un token de autenticación de OAuth2 mediante WebAuthFlow.
+ * Alternativa para navegadores que no soportan getAuthToken nativo (ej. Opera, Edge).
+ */
+function getAuthTokenWebFlow(interactive) {
+  return new Promise((resolve, reject) => {
+    const manifest = browserAPI.runtime.getManifest();
+    
+    // IMPORTANTE PARA OPERA/EDGE: 
+    // Como el ID de la extensión cambia, Google rechaza el login (redirect_uri_mismatch).
+    // Si creaste un "Client ID" de tipo "Aplicación Web" en Google Cloud para Opera, pégalo aquí:
+    const WEB_APP_CLIENT_ID = "262441099949-o76obmtc9pncv801urk1elsqrglh9uaf.apps.googleusercontent.com"; // Ej: "tu-client-id-web.apps.googleusercontent.com"
+    
+    const clientId = WEB_APP_CLIENT_ID || (manifest.oauth2 && manifest.oauth2.client_id);
+    
+    if (!clientId) {
+      return reject(new Error("No OAuth2 client_id found in manifest or settings."));
+    }
+    const scopes = encodeURIComponent(manifest.oauth2.scopes.join(' '));
+    const redirectUri = encodeURIComponent(browserAPI.identity.getRedirectURL());
+    
+    let authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}`;
+    if (interactive) {
+        authUrl += '&prompt=select_account';
+    }
+
+    browserAPI.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: interactive
+    }, (responseUrl) => {
+      if (browserAPI.runtime.lastError) {
+        return reject(new Error(`WebAuthFlow Error: ${browserAPI.runtime.lastError.message}`));
+      }
+      if (!responseUrl) {
+        return reject(new Error("No response URL from web auth flow"));
+      }
+      try {
+        const url = new URL(responseUrl);
+        const params = new URLSearchParams(url.hash.substring(1));
+        const token = params.get('access_token');
+        if (token) {
+          resolve(token);
+        } else {
+          reject(new Error("No access token found in response"));
+        }
+      } catch (e) {
+        reject(new Error("Error parsing response URL"));
+      }
+    });
+  });
+}
+
+/**
  * Obtiene un token de autenticación de OAuth2.
  * @returns {Promise<string>} El token de acceso.
  * @param {boolean} interactive - Si se debe mostrar un popup de login al usuario.
@@ -18,14 +70,28 @@ function getAuthToken(interactive = false) {
     }
 
     console.log(`getAuthToken, interactive: ${interactive}`);
-    browserAPI.identity.getAuthToken({ interactive }, (token) => {
-      if (browserAPI.runtime.lastError) {
-        reject(new Error(`getAuthToken Error: ${browserAPI.runtime.lastError.message}`));
-      } else {
-        console.log("Token obtenido con éxito.");
-        resolve(token);
-      }
-    });
+    
+    if (browserAPI.identity.getAuthToken) {
+      browserAPI.identity.getAuthToken({ interactive }, (token) => {
+        if (browserAPI.runtime.lastError) {
+          const errorMsg = browserAPI.runtime.lastError.message || '';
+          console.log(`getAuthToken nativo falló: ${errorMsg}`);
+          
+          if (errorMsg.includes('Function unsupported')) {
+            console.log("Usando fallback de WebAuthFlow para navegadores no-Chrome...");
+            getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
+          } else {
+            reject(new Error(`getAuthToken Error: ${errorMsg}`));
+          }
+        } else {
+          console.log("Token obtenido con éxito (nativo).");
+          resolve(token);
+        }
+      });
+    } else {
+      console.log("getAuthToken no existe. Usando fallback de WebAuthFlow...");
+      getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
+    }
   });
 }
 
@@ -212,14 +278,20 @@ export async function removeAuthToken() {
     // Primero, obtenemos el token actual para poder invalidarlo.
     const token = await getAuthToken(false);
     if (token) {
-      // Invalidamos el token en la caché del navegador.
-      await browserAPI.identity.removeCachedAuthToken({ token });
+      // Invalidamos el token en la caché del navegador, si está soportado.
+      if (browserAPI.identity.removeCachedAuthToken) {
+        try {
+          await new Promise((resolve) => browserAPI.identity.removeCachedAuthToken({ token }, resolve));
+        } catch (e) {
+          console.warn("removeCachedAuthToken falló o no está soportado:", e.message);
+        }
+      }
       // Invalidamos el token en los servidores de Google.
       await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`);
       console.log("Token de autenticación invalidado.");
     }
   } catch (error) {
     // Aunque falle, continuamos para asegurar que la sesión se cierre en la extensión.
-    console.warn("No se pudo invalidar el token (quizás ya había expirado):", error.message);
+    console.warn("No se pudo invalidar el token (quizás ya había expirado o estamos usando WebAuthFlow):", error.message);
   }
 }
