@@ -8,8 +8,8 @@ if (typeof browser === "undefined") {
 	// pseudo-private members
 	// var $ = jQuery;
 	var isFirefox = typeof InstallTrigger !== 'undefined';
-	var appName = 'Notas Pro OCR'; //browser.i18n.getMessage('appShortName');
-	var appShortName = 'Copyfish';
+	var appName = 'Notas Pro OCR';
+	var appShortName = 'Notas Pro OCR';
 	var $ready;
 	var HTMLSTRCOPY;
 	var APPCONFIG;
@@ -158,10 +158,10 @@ if (typeof browser === "undefined") {
 			return data && data.ParsedResults && data.ParsedResults.length && data.ParsedResults[ 0 ].FileParseExitCode === -10;
 		};
 		var ENGINES = [
-			{ value: 'OcrSpace',       label: 'OCR Engine 1' },
-			{ value: 'OcrSpaceSecond', label: 'OCR Engine 2' },
-			{ value: 'OcrSpaceThird',  label: 'OCR Engine 3' },
-			{ value: 'OcrLocal',       label: 'Local OCR' }
+			{ value: 'OcrSpace',       label: 'Motor OCR 1' },
+			{ value: 'OcrSpaceSecond', label: 'Motor OCR 2' },
+			{ value: 'OcrSpaceThird',  label: 'Motor OCR 3' },
+			{ value: 'OcrLocal',       label: 'OCR Local' }
 		];
 
 		var _getEngineLabel = function(value) {
@@ -177,9 +177,9 @@ if (typeof browser === "undefined") {
 
 			var $wrapper = $('<div class="ocrext-element ocrext-engine-dropdown"></div>');
 
-			var $btn = $('<button class="ocrext-element ocrext-engine-btn mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--colored">' +
+			var $btn = $('<button class="ocrext-element ocrext-engine-btn">' +
 				'<span class="ocrext-engine-btn-label">' + currentLabel + '</span>' +
-				'<span class="ocrext-engine-btn-arrow">&#9660;</span>' +
+				'<svg class="ocrext-engine-btn-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
 				'</button>');
 
 			var $panel = $('<div class="ocrext-engine-panel"></div>');
@@ -203,7 +203,7 @@ if (typeof browser === "undefined") {
 		let $body;
 		var maskString = [
 		'<div class="ocrext-element ocrext-mask">',
-		'<p class="ocrext-element">Please select text to grab.</p>',
+		'<p class="ocrext-element">Por favor, selecciona el texto a capturar.</p>',
 		'<div class="ocrext-overlay-corner ocrext-corner-tl"></div>',
 		'<div class="ocrext-overlay-corner ocrext-corner-tr"></div>',
 		'<div class="ocrext-overlay-corner ocrext-corner-br"></div>',
@@ -339,7 +339,7 @@ if (typeof browser === "undefined") {
 		var $MASK;
 		var maskString = [
 		'<div class="ocrext-element ocrext-mask">',
-		'<p class="ocrext-element">Please select text to grab.</p>',
+		'<p class="ocrext-element">Por favor, selecciona el texto a capturar.</p>',
 		'<div class="ocrext-overlay-corner ocrext-corner-tl"></div>',
 		'<div class="ocrext-overlay-corner ocrext-corner-tr"></div>',
 		'<div class="ocrext-overlay-corner ocrext-corner-br"></div>',
