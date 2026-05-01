@@ -919,6 +919,15 @@ async function init() {
   // switchTab('history');
 }
 
+// Escuchar cambios en el almacenamiento para actualizar la UI en tiempo real
+// (Especialmente útil cuando el monitor de portapapeles guarda una nota nueva)
+browserAPI.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.notes) {
+    console.log('Notas Pro: Detectado cambio en almacenamiento local, refrescando lista...');
+    renderNotes();
+  }
+});
+
 // Esperar a que el DOM esté completamente cargado para ejecutar el script.
 // Esto asegura que todos los elementos HTML están disponibles.
 document.addEventListener('DOMContentLoaded', init);

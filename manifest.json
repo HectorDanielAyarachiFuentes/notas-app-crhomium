@@ -21,7 +21,16 @@
     "downloads",
     "sidePanel",
     "activeTab",
-    "scripting"
+    "scripting",
+    "notifications",
+    "contextMenus"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/clipboard-monitor.js"],
+      "all_frames": true
+    }
   ],
   "side_panel": {
     "default_path": "popup.html"
