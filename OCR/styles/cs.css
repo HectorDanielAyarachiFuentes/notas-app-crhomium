@@ -708,6 +708,12 @@ table { border-collapse: collapse; border-spacing: 0; }
     	left: 50%;
     	top: 60px;
     	pointer-events: none;
+        display: none; /* Hide wrapper by default */
+        z-index: 10;
+    }
+
+    .ocrext-wrapper .ocrext-content .ocrext-ocr-output .ocrext-spinner-wrapper.is-active {
+        display: block; /* Show wrapper when active */
     }
 
     .ocrext-wrapper .ocrext-content .ocrext-ocr-output .ocrext-spinner-wrapper .ocrext-spinner {

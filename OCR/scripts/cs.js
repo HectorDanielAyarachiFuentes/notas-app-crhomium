@@ -1107,10 +1107,30 @@ return false;
 							evt: 'captureScreenLocalOcr',
 							ocrLang:ocrLang,
 							imagepath:dataURI
-						}).then(function (response) {
-							console.log(response)
-
-						})
+						}).then(function (data) {
+							data = data.result || {};
+							if (typeof data === 'string') {
+								$ocr.reject({
+									type: 'OCR',
+									stat: 'OCR conversion failed',
+									message: data
+								});
+							} else if (data.IsErroredOnProcessing) {
+								$ocr.reject({
+									type: 'OCR',
+									stat: 'OCR conversion failed',
+									message: data.ErrorMessage
+								});
+							} else {
+								$ocr.resolve(data.ParsedResults[0].ParsedText, data.ParsedResults[0].TextOverlay);
+							}
+						}).catch(function(err) {
+							$ocr.reject({
+								type: 'OCR',
+								stat: 'OCR Local error',
+								message: err.message || 'Unknown error'
+							});
+						});
 					}
 					else if (OcrEngine === "OcrSpaceSecond") {
 						_postToOCR($ocr, ocrPostData, 0, true);
@@ -2071,6 +2091,7 @@ _initialize: function () {
 		},
 		// spinner logic
 		enableContent: function () {
+			$('.ocrext-spinner-wrapper').removeClass('is-active');
 			$('.ocrext-spinner').removeClass('is-active');
 			$('.ocrext-content').removeClass('ocrext-disabled');
 			$('.ocrext-btn-container .ocrext-btn:not(".ocrext-ocr-desktop-recapture")').removeClass('disabled').removeAttr('disabled');
@@ -2079,10 +2100,21 @@ _initialize: function () {
 		},
 		// spinner logic
 		disableContent: function () {
+			$('.ocrext-spinner-wrapper').addClass('is-active');
 			$('.ocrext-spinner').addClass('is-active');
 			$('.ocrext-content').addClass('ocrext-disabled');
 			$('.ocrext-btn-container .ocrext-btn').addClass('disabled').attr('disabled', 'disabled');
 			$('.ocrext-cancel-ocr').show();
+
+			// Safety timeout: automatically re-enable content after 45 seconds if still stuck
+			clearTimeout(this._enableTimeout);
+			this._enableTimeout = setTimeout(() => {
+				if ($('.ocrext-spinner-wrapper').hasClass('is-active')) {
+					this.enableContent();
+					this.setStatus('error', 'El proceso tardó demasiado. Por favor, intenta de nuevo.');
+				}
+			}, 45000);
+
 			return this;
 		},
 		checkDesktopCaptureModule: () => {
