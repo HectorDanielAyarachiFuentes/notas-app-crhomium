@@ -114,8 +114,19 @@
         <h2 style="font-size: 18px; margin-bottom: 8px;">Google Drive</h2>
         <p style="font-size: 13px; opacity: 0.8; margin-bottom: 20px;">Mantén tus notas seguras y sincronizadas en la nube.</p>
         
-        <div id="sync-logged-out-msg" style="display: none; text-align: center; padding: 20px;">
-          <p>Inicia sesión para activar la sincronización.</p>
+        <div id="sync-logged-out-msg" style="display: none; text-align: center; padding: 20px; flex-direction: column; gap: 16px;">
+          <p style="margin-bottom: 8px;">Inicia sesión para activar la sincronización con Google Drive.</p>
+          <button id="sync-tab-login-btn" class="primary" style="width: 100%;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+            <span>Iniciar sesión</span>
+          </button>
+          <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+            <p style="font-size: 12px; opacity: 0.7; margin-bottom: 12px;">O descarga una copia local de tus notas:</p>
+            <button id="sync-tab-export-btn" class="secondary" style="width: 100%;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Exportar copia local</span>
+            </button>
+          </div>
         </div>
 
         <div id="sync-actions" style="display: none; flex-direction: column; gap: 12px;">

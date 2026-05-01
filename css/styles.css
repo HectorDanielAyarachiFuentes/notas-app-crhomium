@@ -472,14 +472,14 @@ button:not(.tab-button):not(.btn-icon) {
   gap: 8px;
 }
 
-#saveBtn {
+button.primary, #saveBtn {
   background: var(--accent);
   color: white;
   flex: 2;
   box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
 }
 
-#saveBtn:hover {
+button.primary:hover, #saveBtn:hover {
   background: var(--accent-light);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);

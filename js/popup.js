@@ -36,6 +36,8 @@ const themeSelector = document.getElementById('theme-selector');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
 const importFileInput = document.getElementById('import-file-input');
+const syncTabLoginBtn = document.getElementById('sync-tab-login-btn');
+const syncTabExportBtn = document.getElementById('sync-tab-export-btn');
 
 let editingId = null;
 let statusTimeout = null;
@@ -313,21 +315,45 @@ function applyTheme(theme) {
   }
 }
 
-exportBtn.addEventListener('click', async () => {
-  const notes = await getNotes();
-  const notesJSON = JSON.stringify(notes, null, 2);
-  const blob = new Blob([notesJSON], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const date = new Date().toISOString().slice(0, 10);
-  a.download = `notas-export-${date}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  status('Notas exportadas con éxito.', 'success');
-});
+async function exportNotes() {
+  try {
+    const notes = await getNotes();
+    const notesJSON = JSON.stringify(notes, null, 2);
+    const blob = new Blob([notesJSON], { type: 'application/json' });
+    const date = new Date().toISOString().slice(0, 10);
+    const fileName = `notas-export-${date}.json`;
+
+    // Usar la API de descargas de Chrome si está disponible (más fiable en extensiones)
+    if (chrome && chrome.downloads) {
+      const reader = new FileReader();
+      reader.onload = function() {
+        chrome.downloads.download({
+          url: reader.result,
+          filename: fileName,
+          saveAs: true
+        });
+      };
+      reader.readAsDataURL(blob);
+    } else {
+      // Fallback para navegadores sin chrome.downloads
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    status('Notas exportadas con éxito.', 'success');
+  } catch (error) {
+    console.error("Error al exportar:", error);
+    status('Error al exportar: ' + error.message, 'danger');
+  }
+}
+
+exportBtn.addEventListener('click', exportNotes);
+if (syncTabExportBtn) syncTabExportBtn.addEventListener('click', exportNotes);
 
 importBtn.addEventListener('click', () => {
   importFileInput.click();
@@ -408,7 +434,7 @@ function updateSyncUI(isConnected, userInfo = null) {
     uploadBtn.style.display = 'none'; 
     downloadBtn.style.display = 'none';
     syncActionsEl.style.display = 'none';
-    syncLoggedOutMsg.style.display = 'block';
+    syncLoggedOutMsg.style.display = 'flex';
 
     // Restaurar icono a Login
     loginBtn.title = "Iniciar sesión";
@@ -476,6 +502,7 @@ async function handleSyncTabActivation() {
 }
 
 if (loginBtn) loginBtn.addEventListener('click', handleSyncTabActivation);
+if (syncTabLoginBtn) syncTabLoginBtn.addEventListener('click', handleSyncTabActivation);
 
 uploadBtn.addEventListener('click', async () => {
   if (!confirm('Esto sobrescribirá las notas en Google Drive con tus notas locales. ¿Deseas continuar?')) return;
