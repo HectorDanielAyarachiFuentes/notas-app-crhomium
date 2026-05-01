@@ -1552,19 +1552,98 @@ return false;
 			$ready = _bootStrapResources();
 			// listen to runtime messages from other pages, mainly the background page
 			browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
-				// Global click listener for the close button
-				if (!window._closeListenerAdded) {
+				// Global click listener for all OCR interface elements
+				if (!window._ocrGlobalListenersAdded) {
 					window.addEventListener('click', function(e) {
+						// 1. Close Button
 						const closeBtn = e.target.closest('#copyfish-close-button');
 						if (closeBtn) {
-							e.preventDefault();
-							e.stopImmediatePropagation();
-							$('.ocrext-wrapper').remove();
-							$('body').removeClass('ocrext-overlay ocrext-ch');
-							if (typeof onOCRClose === 'function') onOCRClose();
+							e.preventDefault(); e.stopImmediatePropagation();
+							window.onOCRClose(e);
+							return;
+						}
+
+						// 2. Settings & Open in Tab
+						const settingsBtn = e.target.closest('.ocrext-settings-link');
+						if (settingsBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							browser.runtime.sendMessage({ evt: 'open-settings' });
+							return;
+						}
+						const openTabBtn = e.target.closest('.ocrext-open-tab-link');
+						if (openTabBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							let $canvas = $('#ocrext-can');
+							let $canvasOrig = $('#ocrext-canOrig');
+							browser.runtime.sendMessage({
+								evt: 'open-window',
+								url: browser.runtime.getURL('OCR/screencapture.html'),
+								data: $canvas.get(0).toDataURL(),
+								dataOrig: $canvasOrig.get(0).toDataURL(),
+								ocrText: $('.ocrext-ocr-message').val(),
+								overlayInfo: OCRTranslator.overlayInfo,
+								currentZoomLevel: devicePixelRatio
+							});
+							return;
+						}
+
+						// 3. Main Footer Buttons
+						const redoBtn = e.target.closest('.ocrext-ocr-sendocr');
+						if (redoBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							onOCRRedo(); return;
+						}
+						const recaptureBtn = e.target.closest('.ocrext-ocr-recapture');
+						if (recaptureBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							onOCRRecapture(); return;
+						}
+						const copyBtn = e.target.closest('.ocrext-ocr-copy');
+						if (copyBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							onOCRCopy(); return;
+						}
+
+						// 4. Translation Buttons
+						const googleBtn = e.target.closest('#popup_translate_button');
+						if (googleBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							openGoogleTranslatePage(); return;
+						}
+						const deeplBtn = e.target.closest('#deepl_translate_button');
+						if (deeplBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							openDeeplTransatePage(); return;
+						}
+
+						// 5. Engine Dropdown
+						const engineBtn = e.target.closest('.ocrext-engine-btn');
+						if (engineBtn) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							var $panel = $(engineBtn).siblings('.ocrext-engine-panel');
+							var isOpen = $panel.hasClass('open');
+							$('.ocrext-engine-panel').removeClass('open');
+							if (!isOpen) { $panel.addClass('open'); }
+							return;
+						}
+						const engineItem = e.target.closest('.ocrext-engine-item');
+						if (engineItem && !$(engineItem).hasClass('disabled')) {
+							e.preventDefault(); e.stopImmediatePropagation();
+							var engine = $(engineItem).data('engine');
+							OPTIONS.ocrEngine = engine;
+							$(engineItem).addClass('selected').siblings().removeClass('selected');
+							$(engineItem).closest('.ocrext-engine-panel').removeClass('open');
+							$(engineItem).closest('.ocrext-engine-dropdown').find('.ocrext-engine-btn-label').text(_getEngineLabel(engine));
+							saveOptions();
+							return;
+						}
+
+						// Close engine dropdown if clicking outside
+						if (!e.target.closest('.ocrext-engine-dropdown')) {
+							$('.ocrext-engine-panel').removeClass('open');
 						}
 					}, true);
-					window._closeListenerAdded = true;
+					window._ocrGlobalListenersAdded = true;
 				}
 				if (sender.tab) {
 					return true;
@@ -1895,36 +1974,6 @@ _initialize: function () {
 		 			_currentOcrXhr = null;
 		 		}
 		 	})
-		 	.on('click', '.ocrext-ocr-recapture', onOCRRecapture)
-		 	.on('click', '.ocrext-ocr-sendocr', onOCRRedo)
-		 	.on('click', '.ocrext-ocr-desktop-recapture', onOcrDesktopRecapture)
-		 	.on('click', '#copyfish-close-button, .ocrext-closeToolbar-link', onOCRClose)
-		 	.on('click', '.ocrext-ocr-copy', onOCRCopy)
-		 	.on('click', '.ocrext-engine-btn', function (e) {
-		 		e.stopPropagation();
-		 		var $panel = $(this).siblings('.ocrext-engine-panel');
-		 		var isOpen = $panel.hasClass('open');
-		 		$('.ocrext-engine-panel').removeClass('open');
-		 		if (!isOpen) { $panel.addClass('open'); }
-		 	})
-		 	.on('click', '.ocrext-engine-item', function (e) {
-		 		e.stopPropagation();
-		 		if ($(this).hasClass('disabled')) return;
-		 		var newEngine = $(this).data('engine');
-		 		$('.ocrext-engine-panel').removeClass('open');
-		 		setOptions({ ocrEngine: newEngine }).done(function () {
-		 			OcrEngine = OPTIONS.ocrEngine;
-		 			_drawEngineSelector();
-		 			_setLanguageOnUI();
-		 			onOCRReprocess();
-		 		});
-		 	})
-		 	.on('click', function (e) {
-		 		// close engine dropdown if clicking outside
-		 		if (!$(e.target).closest('.ocrext-engine-dropdown').length) {
-		 			$('.ocrext-engine-panel').removeClass('open');
-		 		}
-		 	})
 		 	.on('click', 'header.ocrext-header', function (e) {
 		 		/*click handler for header — cycles: full → minimized → nano → full*/
 		 		if ($(e.target).closest('a').length) return; // Do not toggle if clicking settings/close icons
@@ -1943,13 +1992,8 @@ _initialize: function () {
 		 			$wrapper.addClass('ocrext-wrapper-minimized');
 		 		}
 		 	})
-		 	.on('click', '.ocrext-settings-link', function (e) {
-		 		/*Settings  (gear icon) click handler*/
-		 		e.stopPropagation();
-		 		browser.runtime.sendMessage({
-		 			evt: 'open-settings'
-		 		});
-		 	}).on('click', 'a.ocrext-open-tab-link, .ocrext-textoverlay-container', function (e) {
+		 	/* Legacy listeners removed - handled by global persistent listener */
+		 	.on('click', 'a.ocrext-open-tab-link, .ocrext-textoverlay-container', function (e) {
 		 		e.stopPropagation();
 		 		let $canvas = $('#ocrext-can');
 		 		let $canvasOrig = $('#ocrext-canOrig');
