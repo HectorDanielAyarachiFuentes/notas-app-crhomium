@@ -584,15 +584,21 @@ if (pinBtn) {
 if (ocrBtn) {
   ocrBtn.addEventListener('click', async () => {
     try {
-      // 1. Obtener la pestaña activa
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      // 1. Obtener la pestaña activa en la ventana principal
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       
+      if (!tab) {
+        status('No se pudo encontrar la pestaña activa.', 'danger');
+        return;
+      }
+
       // Validar si la URL es permitida (evitar errores en páginas internas del navegador)
-      const restrictedPrefixes = ['chrome://', 'edge://', 'about:', 'chrome-extension://', 'https://chrome.google.com/webstore'];
-      const isRestricted = !tab || !tab.url || restrictedPrefixes.some(prefix => tab.url.startsWith(prefix));
+      const url = tab.url || '';
+      const restrictedPrefixes = ['chrome://', 'edge://', 'about:', 'chrome-extension://', 'https://chrome.google.com/webstore', 'view-source:'];
+      const isRestricted = restrictedPrefixes.some(prefix => url.startsWith(prefix));
 
       if (isRestricted) {
-        status('El navegador no permite el uso de OCR en esta página.', 'danger', 5000);
+        status('El navegador no permite el uso de OCR en esta página del sistema.', 'danger', 5000);
         return;
       }
 
@@ -649,7 +655,17 @@ if (ocrBtn) {
       
       if (extractedText) {
         const currentContent = contentEl.value;
-        contentEl.value = currentContent + (currentContent ? '\n\n' : '') + extractedText;
+        // Preparar el texto con la fuente
+        const footer = `\n\n--- \nFuente: ${tab.url}`;
+        const newText = extractedText + footer;
+        
+        contentEl.value = currentContent + (currentContent ? '\n\n' : '') + newText;
+        
+        // Si el título está vacío, usar el título de la página
+        if (!titleEl.value.trim()) {
+          titleEl.value = tab.title || 'Nota de OCR';
+        }
+
         updateCharCount();
         triggerAutoSave();
         status('Texto extraído con éxito.', 'success');
@@ -664,7 +680,7 @@ if (ocrBtn) {
       console.error("Error en OCR Selectivo:", error);
       // Capturar errores específicos de permisos del navegador
       if (error.message.includes('Cannot access') || error.message.includes('privileged') || error.message.includes('extension context')) {
-        status('El navegador no permite el uso de OCR en esta página.', 'danger', 5000);
+        status('El navegador no permite el uso de OCR en esta página del sistema.', 'danger', 5000);
       } else {
         status('Error: ' + error.message, 'danger', 5000);
       }
