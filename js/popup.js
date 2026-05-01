@@ -184,12 +184,16 @@ async function renderNotes(filterText = '') {
 }
 
 function status(text, type = 'info', timeout = 2000) {
-  clearTimeout(statusTimeout); // Limpiar temporizador anterior
-  statusEl.textContent = text || '';
-  statusEl.className = `status ${type}`; // Aplicar clase para el color
-  if (timeout !== -1) { // Usar -1 para un mensaje persistente
+  clearTimeout(statusTimeout);
+  if (text) {
+    statusEl.textContent = text;
+    statusEl.className = `status ${type} show`;
+  } else {
+    statusEl.className = 'status';
+  }
+  
+  if (timeout !== -1 && text) {
     statusTimeout = setTimeout(() => {
-      statusEl.textContent = '';
       statusEl.className = 'status';
     }, timeout);
   }
