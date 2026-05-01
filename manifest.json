@@ -3,6 +3,10 @@
   "name": "Notas - Extensión simple",
   "version": "1.0",
   "description": "Una extensión para Microsoft Edge que permite crear, editar y eliminar notas rápidas.",
+  "background": {
+    "service_worker": "js/background.js",
+    "type": "module"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
