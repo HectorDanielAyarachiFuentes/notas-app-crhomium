@@ -285,9 +285,12 @@ settingsBtn.addEventListener('click', (e) => {
 
 // Cierra el menú si se hace clic en cualquier otro lugar
 document.addEventListener('click', (e) => {
-  const settingsContainer = document.getElementById('settings-container');
-  // Si el clic fue fuera del contenedor de ajustes, cierra el menú
-  if (!settingsContainer.contains(e.target)) {
+  const settingsBtn = document.getElementById('settings-btn');
+  const settingsDropdown = document.getElementById('settings-dropdown');
+  
+  if (settingsDropdown && settingsBtn && 
+      !settingsDropdown.contains(e.target) && 
+      !settingsBtn.contains(e.target)) {
     settingsDropdown.style.display = 'none';
   }
 });
@@ -394,13 +397,23 @@ function updateSyncUI(isConnected, userInfo = null) {
     downloadBtn.style.display = 'inline-block';
     syncActionsEl.style.display = 'flex';
     syncLoggedOutMsg.style.display = 'none';
+    
+    // Cambiar icono a Logout
+    loginBtn.title = "Cerrar sesión";
+    loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
+    loginBtn.classList.add('active');
   } else {
     userProfileEl.style.display = 'none';
     loginPromptEl.style.display = 'block';
-    uploadBtn.style.display = 'none'; // Ocultar si no está logueado
+    uploadBtn.style.display = 'none'; 
     downloadBtn.style.display = 'none';
     syncActionsEl.style.display = 'none';
     syncLoggedOutMsg.style.display = 'block';
+
+    // Restaurar icono a Login
+    loginBtn.title = "Iniciar sesión";
+    loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
+    loginBtn.classList.remove('active');
   }
 }
 
@@ -440,10 +453,22 @@ async function loginToDrive() {
  * Si el usuario ya está conectado, no hace nada. Si no, intenta el login.
  */
 async function handleSyncTabActivation() {
+  if (isLoggedIn) {
+    if (confirm('¿Deseas cerrar la sesión de Google?')) {
+      try {
+        status('Cerrando sesión...', 'info', -1);
+        await removeAuthToken();
+        updateSyncUI(false);
+        status('Sesión cerrada con éxito.', 'success');
+      } catch (error) {
+        status(`Error: ${error.message}`, 'danger');
+      }
+    }
+    return;
+  }
+
   const loginSuccess = await loginToDrive();
 
-  // Si el login es exitoso y la sincronización automática está activada,
-  // se iniciará una fusión segura de las notas.
   if (loginSuccess && isAutoSyncEnabled) {
     status('Login exitoso. Iniciando sincronización automática...', 'info');
     await autoSyncNotes();

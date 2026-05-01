@@ -211,6 +211,19 @@ body {
   box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
 }
 
+.btn-icon.active {
+  background: var(--success);
+  color: white;
+  border-color: var(--success-accent);
+  box-shadow: 0 4px 12px rgba(6, 214, 160, 0.2);
+}
+
+.btn-icon.active:hover {
+  background: var(--danger);
+  border-color: var(--danger-hover);
+  box-shadow: 0 4px 12px rgba(239, 71, 111, 0.3);
+}
+
 .settings-menu {
   position: absolute;
   top: 70px;
