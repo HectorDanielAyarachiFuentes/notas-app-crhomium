@@ -91,7 +91,8 @@ function createNoteListItem(note) {
     titleEl.value = note.title;
     contentEl.value = note.content;
     editorTitleEl.textContent = 'Editar nota';
-    newBtn.innerHTML = 'Cancelar'; 
+    const cancelIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    newBtn.innerHTML = `${cancelIcon}<span>Cancelar</span>`; 
     newBtn.classList.add('danger-text');
     status('Editando nota...', 'info', -1);
     switchTab('create');
@@ -204,7 +205,8 @@ function clearEditor() {
   titleEl.value = '';
   contentEl.value = '';
   editorTitleEl.textContent = 'Nueva Nota';
-  newBtn.innerHTML = 'Limpiar';
+  const clearIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+  newBtn.innerHTML = `${clearIcon}<span>Limpiar</span>`;
   newBtn.classList.remove('danger-text');
   titleEl.classList.remove('invalid');
   contentEl.classList.remove('invalid');
@@ -228,11 +230,13 @@ function updateCharCount() {
 function setButtonLoading(button, isLoading, loadingText = 'Cargando...') {
   if (isLoading) {
     button.disabled = true;
-    button.dataset.originalText = button.textContent;
-    button.textContent = loadingText;
+    button.dataset.originalHTML = button.innerHTML;
+    button.innerHTML = `<span>${loadingText}</span>`;
   } else {
     button.disabled = false;
-    button.textContent = button.dataset.originalText;
+    if (button.dataset.originalHTML) {
+      button.innerHTML = button.dataset.originalHTML;
+    }
   }
 }
 
