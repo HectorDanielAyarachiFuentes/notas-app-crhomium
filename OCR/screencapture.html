@@ -1,21 +1,14 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 
 <head>
   <meta charset="utf-8">
-  <link rel="stylesheet" href="styles/reset.css" />
-  <link rel="stylesheet" href="styles/material.min.css" />
   <link href="styles/cs.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-  <!--tabs library-->
-  <link href="styles/style-default.min.css" rel="stylesheet">
-  <link href="styles/screencapture.css" rel="stylesheet">
-  <link rel="stylesheet" href="styles/desktop.screencapture.css">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <title>Tab View</title>
   <script src="scripts/jquery.min.js"></script>
   <script src="scripts/overlay.js"></script>
   <script src="scripts/cs.js"></script>
-  <script src="scripts/material.min.js"></script>
  
 </head>
 
@@ -36,9 +29,8 @@
   </div>
 
 
-  <div data-panes id="screen-capture-overlay-tab"
-    style="border-bottom:0px !important;width: 80%;box-sizing: border-box;overflow:auto;height: 100%;">
-    <div id="copyfish-tab" class="tab-screenshot" style="height:100%">
+  <div data-panes id="screen-capture-overlay-tab" class="ocrext-panes-container">
+    <div id="copyfish-tab" class="tab-screenshot">
       <div id="copyfish-tab-image-container" >
         <canvas id="ocrext-canOrig" class="ocrext-element" width="480" height="320" style="display: none;"></canvas>
         <canvas id="ocrext-can" class="ocrext-element" width=480 height=320></canvas>
@@ -76,13 +68,13 @@
     </div>
     <div class="ocrext-element ocrext-btn-container align-flex-center">
       <button
-        class="ocrext-element ocrext-ocr-sendocr ocrext-btn mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent"
+        class="ocrext-element ocrext-ocr-sendocr ocrext-btn"
         title="Redo OCR">Redo OCR</button>
       <button
-        class="ocrext-element ocrext-ocr-desktop-recapture ocrext-btn mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent"
+        class="ocrext-element ocrext-ocr-desktop-recapture ocrext-btn"
         title="Recapture">Recapture</button>
       <button
-        class="ocrext-element ocrext-ocr-copy ocrext-btn mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent"
+        class="ocrext-element ocrext-ocr-copy ocrext-btn"
         title="Copy to clipboard">Copy to clipboard</button>
       <div id="deepl_translate_button" class="translate-button"><img src="./images/deepl.jpg" alt="open translate">
       </div>

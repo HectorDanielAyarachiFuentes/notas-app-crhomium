@@ -1,1 +1,91 @@
-<div class="ocrext-element ocrext-wrapper"> <header class="ocrext-element ocrext-header"> <span class="ocrext-element ocrext-title mdl-layout-title"> <span class="ocrext-title-name">Notas Pro OCR Pro</span><span class="ocrext-nano-title"></span><span class="ocrext-header-status"></span><a class="ocrext-cancel-ocr" title="Cancelar OCR"> cancelar</a> <a class="ocrext-closeToolbar-link icon-action-white icon-action-white-ic_close_white_24dp" title="Cerrar"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> <line x1="18" y1="6" x2="6" y2="18"/> <line x1="6" y1="6" x2="18" y2="18"/> </svg> </a> <a class="ocrext-settings-link icon-action-white icon-action-white-ic_settings_white_24dp" title="Configuración"> <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></a> <a class="ocrext-open-tab-link icon-action-white icon-action-white-ic_settings_white_24dp" title="Abrir en pestaña"> <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a> </span> </header> <div class="ocrext-element ocrext-content ocrext-clearfix"> <div class="ocrext-element ocrext-canvas-container"> <canvas id="ocrext-canOrig" class="ocrext-element" width="480" height="320" style="display: none;"></canvas> <canvas id="ocrext-can" class="ocrext-element" width=480 height=320></canvas> <div class="ocrext-element ocrext-textoverlay-container"> <a class="ocrext-close-link" title="Cerrar"></a> </div> </div> <div class="ocrext-element ocrext-ocr-output"> <div class="ocrext-element ocrext-spinner-wrapper"> <div class="ocrext-element mdl-spinner mdl-js-spinner ocrext-spinner"></div> </div> <div class="ocrext-element ocrext-grid ocrext-grid-message ocrext-clearfix"> <div class="ocrext-element ocrext-cell ocrext-cell-small"> <h5 class="ocrext-element ocrext-label ocrext-message">Resultado OCR<span></span></h5> </div> <div class="ocrext-element ocrext-cell ocrext-cell-large"> <textarea class="ocrext-element ocrext-ocr-message ocrext-result">N/A</textarea> </div> </div> </div> <div class="ocrext-element ocrext-footer mdl-grid"> <div class="ocrext-element mdl-cell mdl-cell--3-col ocrext-quickselect-btn-container"> </div> <div class="ocrext-element mdl-cell mdl-cell--9-col ocrext-btn-container"> <button class="ocrext-element ocrext-ocr-sendocr ocrext-btn" title="Repetir OCR"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg> Repetir</button> <button class="ocrext-element ocrext-ocr-recapture ocrext-btn" title="Recapturar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg> Recapturar</button> <button class="ocrext-element ocrext-ocr-copy ocrext-btn" title="Copiar al portapapeles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copiar</button> <div class="translate-button" id="deepl_translate_button" title="Traducir con DeepL"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor:pointer; color: var(--text-muted);"><path d="m5 8 6 6"></path><path d="m4 14 6-6 2-3"></path><path d="M2 5h12"></path><path d="M7 2h1"></path><path d="m22 22-5-10-5 10"></path><path d="M14 18h6"></path></svg></div> <div id="popup_translate_button" title="Traducir"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor:pointer; color: var(--text-muted);"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div> </div> </div> </div> </div>
+<div class="ocrext-element ocrext-wrapper">
+    <header class="ocrext-element ocrext-header"> <span class="ocrext-element ocrext-title"> <span
+                class="ocrext-title-name">Notas Pro OCR Pro</span><span class="ocrext-nano-title"></span><span
+                class="ocrext-header-status"></span><a class="ocrext-cancel-ocr" title="Cancelar OCR"> cancelar</a> <a
+                class="ocrext-closeToolbar-link icon-action-white icon-action-white-ic_close_white_24dp"
+                title="Cerrar"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg> </a> <a class="ocrext-settings-link icon-action-white icon-action-white-ic_settings_white_24dp"
+                title="Configuración"> <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
+                    viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path
+                        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
+                    </path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg></a> <a class="ocrext-open-tab-link icon-action-white icon-action-white-ic_settings_white_24dp"
+                title="Abrir en pestaña"> <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
+                    viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg></a> </span> </header>
+    <div class="ocrext-element ocrext-content ocrext-clearfix">
+        <div class="ocrext-element ocrext-canvas-container"> <canvas id="ocrext-canOrig" class="ocrext-element"
+                width="480" height="320" style="display: none;"></canvas> <canvas id="ocrext-can" class="ocrext-element"
+                width=480 height=320></canvas>
+            <div class="ocrext-element ocrext-textoverlay-container"> <a class="ocrext-close-link" title="Cerrar"></a>
+            </div>
+        </div>
+        <div class="ocrext-element ocrext-ocr-output">
+            <div class="ocrext-element ocrext-spinner-wrapper">
+                <div class="ocrext-element ocrext-spinner"></div>
+            </div>
+            <div class="ocrext-element ocrext-grid ocrext-grid-message ocrext-clearfix">
+                <div class="ocrext-element ocrext-cell ocrext-cell-small">
+                    <h5 class="ocrext-element ocrext-label ocrext-message">Resultado OCR<span></span></h5>
+                </div>
+                <div class="ocrext-element ocrext-cell ocrext-cell-large"> <textarea
+                        class="ocrext-element ocrext-ocr-message ocrext-result">N/A</textarea> </div>
+            </div>
+        </div>
+        <div class="ocrext-element ocrext-footer">
+            <div class="ocrext-element ocrext-quickselect-btn-container"> </div>
+            <div class="ocrext-element ocrext-btn-container"> <button
+                    class="ocrext-element ocrext-ocr-sendocr ocrext-btn" title="Repetir OCR"><svg width="18" height="18"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                        <path d="M21 3v5h-5"></path>
+                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                        <path d="M8 16H3v5"></path>
+                    </svg> Repetir</button> <button class="ocrext-element ocrext-ocr-recapture ocrext-btn"
+                    title="Recapturar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z">
+                        </path>
+                        <circle cx="12" cy="13" r="3"></circle>
+                    </svg> Recapturar</button> <button class="ocrext-element ocrext-ocr-copy ocrext-btn"
+                    title="Copiar al portapapeles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg> Copiar</button>
+                <div class="translate-button" id="deepl_translate_button" title="Traducir con DeepL"><svg width="24"
+                        height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round"
+                        style="cursor:pointer; color: var(--text-muted);">
+                        <path d="m5 8 6 6"></path>
+                        <path d="m4 14 6-6 2-3"></path>
+                        <path d="M2 5h12"></path>
+                        <path d="M7 2h1"></path>
+                        <path d="m22 22-5-10-5 10"></path>
+                        <path d="M14 18h6"></path>
+                    </svg></div>
+                <div id="popup_translate_button" title="Traducir"><svg width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" style="cursor:pointer; color: var(--text-muted);">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M2 12h20"></path>
+                        <path
+                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                        </path>
+                    </svg></div>
+            </div>
+        </div>
+    </div>
+</div>

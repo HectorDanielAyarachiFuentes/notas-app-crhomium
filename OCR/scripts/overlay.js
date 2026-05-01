@@ -48,7 +48,7 @@ window.browser = (function () {
 				buttons && buttons.forEach((single,i) => {
 					let { label = '', cb = () => { } } = single;
 					let buttonId = 'cfish-' + i + (Date.now());
-					let btn = '<span><button id="' + buttonId + '" class="cp-show-dialog-button ocrext-btn mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect mdl-button--accent" title="">' + label + '</button></span>';
+					let btn = '<span><button id="' + buttonId + '" class="cp-show-dialog-button ocrext-btn" title="">' + label + '</button></span>';
 					buttonHtml += btn;
 					if ($('#' + buttonId).length) {
 						$('#' + buttonId).remove();

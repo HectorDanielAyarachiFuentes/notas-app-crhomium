@@ -1,7 +1,7 @@
 if (typeof browser === "undefined") {
     var browser = chrome;
 }
-/* globals jQuery, unescape, componentHandler */
+/* globals jQuery, unescape */
 
 (function ($) {
 	'use strict';
@@ -195,7 +195,7 @@ if (typeof browser === "undefined") {
 
 			$wrapper.append($btn).append($panel);
 			$btnContainer.append($wrapper);
-			componentHandler.upgradeElement($btn.get(0));
+			// componentHandler.upgradeElement($btn.get(0)); // Removed MDL dependency
 		};
 
 	// Background mask
@@ -1818,11 +1818,11 @@ _initialize: function () {
 			// draw OCR engine selector
 			_drawEngineSelector();
 			// upgrade buttons
-			$('button.ocrext-btn').each(function (i, el) {
+			/* $('button.ocrext-btn').each(function (i, el) {
 				componentHandler.upgradeElement(el);
-			});
+			}); */
 			// upgrade spinner
-			componentHandler.upgradeElement($('.ocrext-spinner').get(0));
+			// componentHandler.upgradeElement($('.ocrext-spinner').get(0));
 		},
 
 		/*

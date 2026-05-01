@@ -169,31 +169,33 @@ async function handleBackgroundOCR(tab) {
 
     // Inyectar polyfill y dependencias
     await chrome.scripting.executeScript({
-      target: { tabId: tab.id, allFrames: true },
+      target: { tabId: tab.id },
       files: [
         'OCR/scripts/crossbrowser.js',
         'OCR/scripts/jquery.min.js',
-        'OCR/scripts/material.min.js',
         'OCR/scripts/overlay.js',
         'OCR/scripts/cs.js'
       ]
     });
 
     await chrome.scripting.insertCSS({
-      target: { tabId: tab.id, allFrames: true },
+      target: { tabId: tab.id },
       files: [
-        'OCR/styles/material.min.css',
         'OCR/styles/cs.css'
       ]
     });
 
     // Esperar un momento para la inicialización de los scripts
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 400));
 
     // Activar selección
     chrome.tabs.sendMessage(tab.id, { evt: 'enableselection' });
     
+    // Seguridad: Resetear flag después de un tiempo razonable si algo falla
+    setTimeout(() => { isProcessingOCR = false; }, 10000);
+
     return { success: true };
+
   } catch (error) {
     isProcessingOCR = false;
     return { success: false, error: error.message };
