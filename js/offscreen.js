@@ -23,10 +23,17 @@ async function cropImage(dataUrl, coords) {
       const sy = coords.y * dpr;
       const sw = coords.width * dpr;
       const sh = coords.height * dpr;
-      canvas.width = sw;
-      canvas.height = sh;
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      const maxDim = 1200;
+      let scale = 1;
+      if (sw > maxDim || sh > maxDim) {
+        scale = Math.min(maxDim / sw, maxDim / sh);
+      }
+
+      canvas.width = sw * scale;
+      canvas.height = sh * scale;
+      
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.6));
     };
     img.onerror = () => reject(new Error("Error al cargar la imagen en offscreen"));
     img.src = dataUrl;

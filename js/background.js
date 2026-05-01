@@ -88,7 +88,7 @@ async function handleBackgroundOCR(tab) {
       return { success: false, cancelled: true };
     }
 
-    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
+    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 60 });
     const croppedDataUrl = await processImageOffscreen(fullDataUrl, selection);
     const extractedText = await callOCRSpace(croppedDataUrl);
 
