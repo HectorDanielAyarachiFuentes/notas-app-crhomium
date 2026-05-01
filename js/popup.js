@@ -41,6 +41,7 @@ const syncTabExportBtn = document.getElementById('sync-tab-export-btn');
 
 let editingId = null;
 let statusTimeout = null;
+let autoSaveTimeout = null;
 let isAutoSyncEnabled = false;
 let isLoggedIn = false;
 
@@ -79,6 +80,7 @@ function createNoteListItem(note) {
     status('Editando nota...', 'info', -1);
     switchTab('create');
     titleEl.focus();
+    updateCharCount(); // Actualizar contador al abrir
     renderNotes(); // Re-render para mostrar el resaltado
   };
 
@@ -187,7 +189,14 @@ function clearEditor() {
   titleEl.classList.remove('invalid');
   contentEl.classList.remove('invalid');
   status('Editor limpio.', 'info');
+  updateCharCount(); // Resetear contador al limpiar
+  browserAPI.storage.local.remove(['editorDraft', 'editingIdDraft']); // Limpiar borradores al resetear
   renderNotes(); // Re-render para quitar cualquier resaltado
+}
+
+function updateCharCount() {
+  const length = contentEl.value.length;
+  charCounterEl.textContent = `${length} caracteres`;
 }
 
 /**
@@ -207,25 +216,24 @@ function setButtonLoading(button, isLoading, loadingText = 'Cargando...') {
   }
 }
 
-saveBtn.addEventListener('click', async () => {
+async function performSave(isAutoSave = false) {
   const title = titleEl.value.trim();
   const content = contentEl.value.trim();
   
-  titleEl.classList.remove('invalid');
-  contentEl.classList.remove('invalid');
+  if (!isAutoSave) {
+    titleEl.classList.remove('invalid');
+    contentEl.classList.remove('invalid');
+    if (titleEl.parentElement) titleEl.parentElement.classList.remove('shake');
 
-  // Remover animación de error si existe
-  titleEl.parentElement.classList.remove('shake');
-
-  if (!title && !content) {
-    titleEl.classList.add('invalid');
-    contentEl.classList.add('invalid');
-    // Añadir animación de "shake" para feedback visual
-    titleEl.parentElement.classList.add('shake');
-    status('La nota está vacía. Escribe algo.', 'danger');
-    return;
+    if (!title && !content) {
+      titleEl.classList.add('invalid');
+      contentEl.classList.add('invalid');
+      if (titleEl.parentElement) titleEl.parentElement.classList.add('shake');
+      status('La nota está vacía. Escribe algo.', 'danger');
+      return;
+    }
+    setButtonLoading(saveBtn, true, 'Guardando...');
   }
-  setButtonLoading(saveBtn, true, 'Guardando...');
 
   const notes = await getNotes();
   const now = Date.now();
@@ -233,40 +241,69 @@ saveBtn.addEventListener('click', async () => {
   if (editingId) {
     const noteToUpdate = notes.find(n => n.id === editingId);
     if (noteToUpdate) {
+      // Solo guardar si algo cambió para no saturar chrome.storage.sync
+      if (noteToUpdate.title === title && noteToUpdate.content === content) {
+        if (!isAutoSave) setButtonLoading(saveBtn, false);
+        return;
+      }
       noteToUpdate.title = title;
       noteToUpdate.content = content;
       noteToUpdate.updatedAt = now;
-    } // Si no se encuentra, no hacemos nada, el editor se limpiará.
-  } else {
-    // Crear nueva nota
+    }
+  } else if (!isAutoSave) {
+    // Solo crear nueva nota si NO es auto-guardado (o si decidimos auto-crear)
     notes.push({
-      id: crypto.randomUUID(), // Usar UUID para IDs únicos
+      id: crypto.randomUUID(),
       title,
       content,
       createdAt: now,
       updatedAt: now
     });
+  } else {
+    // Es auto-guardado de una nota NUEVA, guardamos borrador local
+    await browserAPI.storage.local.set({ 
+      editorDraft: { title, content },
+      editingIdDraft: editingId // Guardar si estamos editando o no
+    });
+    return;
   }
 
   try {
     await saveNotes(notes);
     renderNotes();
-    status('Nota guardada.', 'success');
-
-    if (isLoggedIn && isAutoSyncEnabled) {
-      uploadNotesToDrive(notes).then(() => status('Nota sincronizada con Drive.', 'success', 1500));
-    }
-
-    clearEditor();
-    switchTab('history');
     
-    // Success feedback on the new active tab or a notification
-    status('¡Nota guardada con éxito!', 'success');
+    if (!isAutoSave) {
+      status('Nota guardada.', 'success');
+      if (isLoggedIn && isAutoSyncEnabled) {
+        uploadNotesToDrive(notes).then(() => status('Nota sincronizada con Drive.', 'success', 1500));
+      }
+      await browserAPI.storage.local.remove(['editorDraft', 'editingIdDraft']);
+      clearEditor();
+      switchTab('history');
+      status('¡Nota guardada con éxito!', 'success');
+    } else {
+      console.log("Auto-guardado exitoso.");
+    }
   } catch (error) {
-    status('Error al guardar: ' + error.message, 'danger');
+    if (!isAutoSave) status('Error al guardar: ' + error.message, 'danger');
   } finally {
-    setButtonLoading(saveBtn, false);
+    if (!isAutoSave) setButtonLoading(saveBtn, false);
   }
+}
+
+saveBtn.addEventListener('click', () => performSave(false));
+
+function triggerAutoSave() {
+  clearTimeout(autoSaveTimeout);
+  autoSaveTimeout = setTimeout(() => {
+    performSave(true);
+  }, 1000); // 1 segundo de debounce
+}
+
+titleEl.addEventListener('input', triggerAutoSave);
+contentEl.addEventListener('input', () => {
+  updateCharCount();
+  triggerAutoSave();
 });
 
 newBtn.addEventListener('click', () => {
@@ -397,7 +434,8 @@ importFileInput.addEventListener('change', (e) => {
 });
 
 contentEl.addEventListener('input', () => {
-  charCounterEl.textContent = contentEl.value.length;
+  updateCharCount();
+  triggerAutoSave();
 });
 
 /**
@@ -684,13 +722,34 @@ async function init() {
   isAutoSyncEnabled = autoSyncEnabled;
   autoSyncToggle.checked = isAutoSyncEnabled;
 
+  // Cargar borrador y estado de edición si existe
+  const { editorDraft, editingIdDraft } = await browserAPI.storage.local.get(['editorDraft', 'editingIdDraft']);
+  
+  if (editingIdDraft) {
+    editingId = editingIdDraft;
+    // Recuperar los datos de la nota original para compararlos si el borrador fallara,
+    // pero aquí priorizamos el editorDraft que es lo más reciente escrito.
+    if (editorDraft) {
+      titleEl.value = editorDraft.title || '';
+      contentEl.value = editorDraft.content || '';
+    }
+    editorTitleEl.textContent = 'Editar nota';
+    newBtn.innerHTML = 'Cancelar'; 
+    newBtn.classList.add('danger-text');
+    status('Sesión de edición restaurada.', 'info');
+  } else if (editorDraft && (editorDraft.title || editorDraft.content)) {
+    titleEl.value = editorDraft.title || '';
+    contentEl.value = editorDraft.content || '';
+    status('Borrador restaurado.', 'info');
+  }
+
   // Cargar preferencia de tema
   const { theme } = await browserAPI.storage.sync.get({ theme: 'system' });
   themeSelector.value = theme;
   applyTheme(theme);
 
   // 1. Renderizar la lista de notas en la pestaña de historial.
-  charCounterEl.textContent = `${contentEl.value.length} caracteres`;
+  updateCharCount();
   renderNotes();
   
   // Cargar versión de la extensión
