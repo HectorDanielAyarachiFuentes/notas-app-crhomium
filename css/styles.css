@@ -406,20 +406,70 @@ body.is-side-panel .header-actions {
   gap: 12px;
 }
 
+.about-us-container {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.about-us-link {
+  text-decoration: none;
+  display: block;
+}
+
 .about-us-logo {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
   border: 2px solid var(--accent);
   box-shadow: 0 0 15px rgba(67, 97, 238, 0.3), var(--shadow-sm);
   background: var(--surface);
   object-fit: cover;
-  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.about-us-logo:hover {
-  transform: scale(1.15) rotate(5deg);
-  box-shadow: 0 0 25px rgba(67, 97, 238, 0.5);
+.about-us-container:hover .about-us-logo {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 0 25px rgba(67, 97, 238, 0.6);
+  border-color: var(--accent-light);
+}
+
+.speech-bubble {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px) scale(0.8);
+  background: var(--accent);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+}
+
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px 5px 0;
+  border-style: solid;
+  border-color: var(--accent) transparent transparent transparent;
+  display: block;
+  width: 0;
+}
+
+.about-us-container:hover .speech-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 /* Tabs Navigation */
@@ -795,14 +845,7 @@ button.secondary:hover {
 input:checked + .slider { background-color: var(--accent); }
 input:checked + .slider:before { transform: translateX(22px); }
 
-/* About Section */
-.about-us-logo {
-  width: 80px;
-  height: 80px;
-  border-radius: 20px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow-md);
-}
+
 /* Toast Notification */
 .status {
   position: fixed;
