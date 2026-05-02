@@ -184,7 +184,7 @@ if (typeof browser === "undefined") {
 
 			var $panel = $('<div class="ocrext-engine-panel"></div>');
 			$.each(ENGINES, function(i, e) {
-				if (e.value === 'OcrLocal' && !localOcrInstalled) return;
+				// if (e.value === 'OcrLocal' && !localOcrInstalled) return;
 				var $item = $('<div class="ocrext-engine-item' +
 					(OPTIONS.ocrEngine === e.value ? ' selected' : '') +
 					'" data-engine="' + e.value + '">' +
@@ -1103,33 +1103,27 @@ return false;
 						_postToOCR($ocr, ocrPostData, 0);
 					}else if (OcrEngine === "OcrLocal") {
 						var ocrLang =   OPTIONS.visualCopyOCRLang;
-						browser.runtime.sendMessage({
-							evt: 'captureScreenLocalOcr',
-							ocrLang:ocrLang,
-							imagepath:dataURI
-						}).then(function (data) {
-							data = data.result || {};
-							if (typeof data === 'string') {
-								$ocr.reject({
-									type: 'OCR',
-									stat: 'OCR conversion failed',
-									message: data
-								});
-							} else if (data.IsErroredOnProcessing) {
-								$ocr.reject({
-									type: 'OCR',
-									stat: 'OCR conversion failed',
-									message: data.ErrorMessage
-								});
-							} else {
-								$ocr.resolve(data.ParsedResults[0].ParsedText, data.ParsedResults[0].TextOverlay);
-							}
-						}).catch(function(err) {
-							$ocr.reject({
-								type: 'OCR',
-								stat: 'OCR Local error',
-								message: err.message || 'Unknown error'
+						var lang = ocrLang || 'spa';
+						Tesseract.createWorker(lang, 1, {
+							workerPath: browser.runtime.getURL('OCR/scripts/worker.min.js'),
+							corePath: browser.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
+							langPath: browser.runtime.getURL('OCR/tessdata/'),
+							cacheMethod: 'none',
+							gzip: true,
+							logger: m => console.log('Tesseract:', m)
+						}).then(function(worker) {
+							worker.recognize(dataURI).then(function(res) {
+								console.log('OCR Local completado:', res.data.text);
+								worker.terminate();
+								$ocr.resolve(res.data.text, { Lines: [] });
+							}).catch(function(err) {
+								console.error('Error en recognize:', err);
+								worker.terminate();
+								$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: err.message });
 							});
+						}).catch(function(err) {
+							console.error('Error en createWorker:', err);
+							$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: err.message });
 						});
 					}
 					else if (OcrEngine === "OcrSpaceSecond") {
@@ -1156,47 +1150,28 @@ return false;
 
 					} else if (OcrEngine === "OcrLocal") {
 						var ocrLang =   OPTIONS.visualCopyOCRLang;
-						browser.runtime.sendMessage({
-							evt: 'captureScreenLocalOcr',
-							ocrLang:ocrLang,
-							imagepath:dataURI
-						}).then(function (data) {
-							console.log(data)
-							var result;
-							
-							data = data.result || {};
-							
-							if (typeof data === 'string') {
-								$ocr.reject({
-									type: 'OCR',
-									stat: 'OCR conversion failed',
-									message: data,
-									details: data,
-									code: data
-								});
-							} else if (data.IsErroredOnProcessing) {
-								$ocr.reject({
-									type: 'OCR',
-									stat: 'OCR conversion failed',
-									message: data.ErrorMessage,
-									details: data.ErrorDetails,
-									code: data.OCRExitCode
-								});
-							} else if (!data.IsErroredOnProcessing || data.OCRExitCode === 0) {
-								$ocr.resolve(data.ParsedResults[ 0 ].ParsedText, data.ParsedResults[ 0 ].TextOverlay);
-							} else {
-								result = 'OCRCommandLine stopped working';
-								$ocr.reject({
-									type: 'OCR',
-									stat: 'OCR conversion failed',
-									message: result.ErrorMessage,
-									details: result.ErrorDetails,
-									code: result.FileParseExitCode
-								});
-							}
-
-
-						})
+						var lang = ocrLang || 'spa';
+						Tesseract.createWorker(lang, 1, {
+							workerPath: browser.runtime.getURL('OCR/scripts/worker.min.js'),
+							corePath: browser.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
+							langPath: browser.runtime.getURL('OCR/tessdata/'),
+							cacheMethod: 'none',
+							gzip: true,
+							logger: m => console.log('Tesseract:', m)
+						}).then(function(worker) {
+							worker.recognize(dataURI).then(function(res) {
+								console.log('OCR Local completado:', res.data.text);
+								worker.terminate();
+								$ocr.resolve(res.data.text, { Lines: [] });
+							}).catch(function(err) {
+								console.error('Error en recognize:', err);
+								worker.terminate();
+								$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: err.message });
+							});
+						}).catch(function(err) {
+							console.error('Error en createWorker:', err);
+							$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: err.message });
+						});
 					}else if (OcrEngine === "OcrSpaceSecond") {
 						_postToOCR($ocr, ocrPostData, 0, true);
 					} else if (OcrEngine === "OcrSpaceThird") {
@@ -1644,7 +1619,7 @@ return false;
 							$(engineItem).addClass('selected').siblings().removeClass('selected');
 							$(engineItem).closest('.ocrext-engine-panel').removeClass('open');
 							$(engineItem).closest('.ocrext-engine-dropdown').find('.ocrext-engine-btn-label').text(_getEngineLabel(engine));
-							saveOptions();
+							setOptions(OPTIONS);
 							return;
 						}
 
