@@ -491,7 +491,7 @@ if (typeof browser === "undefined") {
 				openGrabbingScreenHotkey: 0,
 				closePanelHotkey: 0,
 				copyTextHotkey: 0,
-				ocrEngine: 'OcrSpaceSecond',
+				ocrEngine: 'OcrLocal',
 				status: 'Pro'
 			};
 			browser.storage.sync.get(theseOptions, function (opts) {
