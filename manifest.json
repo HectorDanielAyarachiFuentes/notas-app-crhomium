@@ -7,6 +7,9 @@
     "service_worker": "js/background.js",
     "type": "module"
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -23,7 +26,8 @@
     "activeTab",
     "scripting",
     "notifications",
-    "contextMenus"
+    "contextMenus",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -62,6 +66,7 @@
         "OCR/scripts/tesseract.esm.js",
         "OCR/scripts/worker.min.js",
         "OCR/scripts/tesseract-core-simd.wasm.js",
+        "OCR/scripts/tesseract-core-simd.wasm",
         "OCR/tessdata/*",
         "OCR/images/*"
       ],

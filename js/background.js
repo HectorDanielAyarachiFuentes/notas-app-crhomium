@@ -113,6 +113,24 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.evt === 'captureScreenLocalOcr') {
+    (async () => {
+      try {
+        await setupOffscreenDocument();
+        const response = await chrome.runtime.sendMessage({
+          evt: 'performLocalOCR',
+          ocrLang: message.ocrLang,
+          imagepath: message.imagepath
+        });
+        sendResponse(response);
+      } catch (e) {
+        console.error('Error forwarding to offscreen:', e);
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
+
 	if (message.evt === 'open-window') {
 		chrome.tabs.create({ url: message.url });
 		sendResponse({ success: true });
@@ -218,6 +236,24 @@ async function handleBackgroundOCR(tab) {
   } catch (error) {
     isProcessingOCR = false;
     return { success: false, error: error.message };
+  }
+}
+
+let creating; // A global promise to avoid race conditions
+async function setupOffscreenDocument() {
+  const path = 'OCR/offscreen.html';
+  if (await chrome.offscreen.hasDocument()) return;
+  
+  if (creating) {
+    await creating;
+  } else {
+    creating = chrome.offscreen.createDocument({
+      url: path,
+      reasons: ['DOM_PARSER'], // Best fit for OCR tasks needing DOM/Worker
+      justification: 'Realizar OCR local mediante Tesseract.js que requiere un entorno DOM estable y soporte de Workers.',
+    });
+    await creating;
+    creating = null;
   }
 }
 
