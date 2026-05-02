@@ -158,14 +158,16 @@ async function handleAutoSave(data) {
     const notes = await getNotes();
     const now = Date.now();
 
+    const finalContent = data.url ? `${data.content}\n\nFuente: ${data.url}` : data.content;
+
     // Evitar duplicados exactos muy recientes
-    const isDuplicate = notes.some(n => n.content === data.content && (now - n.createdAt < 5000));
+    const isDuplicate = notes.some(n => n.content === finalContent && (now - n.createdAt < 5000));
     if (isDuplicate) return;
 
     const newNote = {
       id: crypto.randomUUID(),
       title: data.title ? (data.title.length > 30 ? data.title.substring(0, 30) + '...' : data.title) : "Copiado",
-      content: data.content,
+      content: finalContent,
       createdAt: now,
       updatedAt: now,
       sourceUrl: data.url
