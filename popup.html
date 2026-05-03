@@ -146,6 +146,56 @@
             <p id="sync-loading-msg" style="display: none; text-align: center;">Conectando...</p>
           </div>
         </section>
+
+        <!-- ── PESTAÑA: CÓMO FUNCIONA ── -->
+        <section id="tab-help" class="tab-panel">
+          <div class="help-container">
+            <div class="beta-badge">🚀 VERSIÓN BETA</div>
+            
+            <section class="help-section">
+              <h2><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Modos de Guardado</h2>
+              <div class="help-card">
+                <div class="help-card-title">💾 Modo Local (Seguro)</div>
+                <p>Tus notas se guardan en una <strong>base de datos interna</strong> del navegador (Storage API). A diferencia de la caché, esta base de datos es persistente: tus notas <strong>no se borran</strong> al limpiar el historial o la caché de Opera/Chrome. Es el lugar más privado y seguro para tus datos locales.</p>
+              </div>
+              <div class="help-card">
+                <div class="help-card-title">☁️ Modo Drive</div>
+                <p>Sincroniza tus notas con una carpeta oculta en tu Google Drive. Permite tener las mismas notas en Chrome y Opera GX automáticamente.</p>
+              </div>
+            </section>
+
+            <section class="help-section">
+              <h2><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2z"></path><path d="M8 11v4"></path><path d="M12 9v6"></path><path d="M16 11v4"></path></svg> Tecnología OCR</h2>
+              <p>Extraé texto de imágenes y videos con dos potentes motores:</p>
+              <div class="help-grid">
+                <div class="help-mini-card">
+                  <strong>OCR Local</strong>
+                  <span>Usa Tesseract.js para procesar todo en tu PC. Privacidad total y sin límites.</span>
+                </div>
+                <div class="help-mini-card">
+                  <strong>OCR Online</strong>
+                  <span>Usa servidores externos para mayor precisión en textos complejos.</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="help-section">
+              <h2><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg> Captura Inteligente</h2>
+              <div class="help-card">
+                <div class="help-card-title">📋 Copiado Automático</div>
+                <p>Nuestro sistema de monitoreo detecta cuando copiás un texto y lo prepara automáticamente para guardarlo, asegurando que no pierdas ninguna idea importante.</p>
+              </div>
+              <div class="help-card">
+                <div class="help-card-title">🔗 Rastreo de Contexto</div>
+                <p>Cada vez que capturás información, Notas Pro agrega automáticamente la <strong>URL de origen</strong>. Así, siempre sabrás de qué página sacaste el dato y podrás volver a ella con un clic.</p>
+              </div>
+            </section>
+
+            <section class="help-section disclaimer">
+              <p>⚠️ <strong>Aviso:</strong> Esta aplicación fue desarrollada para uso personal del desarrollador. Si sos un usuario avanzado, podés modificar los parámetros en el código fuente. ¡Usala con sabiduría!</p>
+            </section>
+          </div>
+        </section>
       </main>
 
       <aside class="sidebar-nav">
@@ -200,6 +250,10 @@
                   <option value="dark">Oscuro</option>
                 </select>
               </div>
+              <button id="show-guide-btn" class="guide-link-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span>Ver Guía de Uso</span>
+              </button>
             </div>
 
             <div class="settings-header">
@@ -248,6 +302,8 @@
           </button>
         </nav>
       </aside>
+    </div>
+
     </div>
   </div>
 

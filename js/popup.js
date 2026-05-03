@@ -1034,3 +1034,12 @@ if (versionEl) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Botón "Ver Guía" en Ajustes
+const showGuideBtn = document.getElementById('show-guide-btn');
+if (showGuideBtn) {
+  showGuideBtn.addEventListener('click', () => {
+    switchTab('help');
+    settingsDropdown.style.display = 'none'; // Cerrar el menú de ajustes
+  });
+}
