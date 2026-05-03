@@ -1,6 +1,6 @@
 import { getNotes, saveNotes } from './utils.js';
 import browserAPI from './browser-api.js';
-import { uploadNotesToDrive, downloadNotesFromDrive, getAuthTokenAndInfo, removeAuthToken } from './drive-sync.js';
+import { uploadNotesToDrive, downloadNotesFromDrive, removeAuthToken } from './drive-sync.js';
 
 // Detección de Panel Lateral vs Popup
 function detectSidePanel() {
@@ -753,5 +753,28 @@ browserAPI.storage.onChanged.addListener((changes, area) => {
     renderNotes();
   }
 });
+
+// Función para guardar el email del usuario para la persistencia
+async function getAuthTokenAndInfo(interactive = false) {
+    const { getAuthTokenAndInfo: getInfo } = await import('./drive-sync.js');
+    const data = await getInfo(interactive);
+    if (data && data.userInfo && data.userInfo.email) {
+        await browserAPI.storage.local.set({ "cached_user_email": data.userInfo.email });
+    }
+    return data;
+}
+
+// Escuchar el triple clic en la versión para forzar sincronización (el truco de las 3 barras/clics)
+const versionEl = document.getElementById('extension-version');
+if (versionEl) {
+  versionEl.style.cursor = 'pointer';
+  versionEl.addEventListener('click', (e) => {
+    if (e.detail === 3) { // Triple clic
+      console.log("Triple clic detectado: Forzando sincronización...");
+      status('Forzando sincronización...', 'info', 3000);
+      checkInitialSyncStatus();
+    }
+  });
+}
 
 document.addEventListener('DOMContentLoaded', init);

@@ -12,52 +12,55 @@ let memoryToken = null; // Caché en memoria para la sesión actual del popup
  * Obtiene un token de autenticación de OAuth2 mediante WebAuthFlow.
  * Alternativa para navegadores que no soportan getAuthToken nativo (ej. Opera, Edge).
  */
-function getAuthTokenWebFlow(interactive) {
-  return new Promise((resolve, reject) => {
-    const manifest = browserAPI.runtime.getManifest();
-    
-    // IMPORTANTE PARA OPERA/EDGE: 
-    // Como el ID de la extensión cambia, Google rechaza el login (redirect_uri_mismatch).
-    // Si creaste un "Client ID" de tipo "Aplicación Web" en Google Cloud para Opera, pégalo aquí:
-    const WEB_APP_CLIENT_ID = "262441099949-o76obmtc9pncv801urk1elsqrglh9uaf.apps.googleusercontent.com"; // Ej: "tu-client-id-web.apps.googleusercontent.com"
-    
-    const clientId = WEB_APP_CLIENT_ID || (manifest.oauth2 && manifest.oauth2.client_id);
-    
-    if (!clientId) {
-      return reject(new Error("No OAuth2 client_id found in manifest or settings."));
-    }
-    const scopes = encodeURIComponent(manifest.oauth2.scopes.join(' '));
-    const redirectUri = encodeURIComponent("https://fokahhfcbgbncigpkkdgmhimcfjbjlbl.chromiumapp.org/");
-    
-    let authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}`;
-    if (interactive) {
-        authUrl += '&prompt=select_account';
-    }
+async function getAuthTokenWebFlow(interactive) {
+  const manifest = browserAPI.runtime.getManifest();
+  const clientId = "262441099949-o76obmtc9pncv801urk1elsqrglh9uaf.apps.googleusercontent.com";
+  
+  // Recuperar el correo guardado para la persistencia
+  const storage = await browserAPI.storage.local.get("cached_user_email");
+  const userEmail = storage.cached_user_email;
 
+  const scopes = encodeURIComponent(manifest.oauth2.scopes.join(' '));
+  const redirectUri = encodeURIComponent("https://fokahhfcbgbncigpkkdgmhimcfjbjlbl.chromiumapp.org/");
+  
+  let authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}`;
+  
+  if (interactive) {
+      authUrl += '&prompt=select_account';
+  } else if (userEmail) {
+      // Truco de persistencia: si tenemos el correo, intentamos entrar sin preguntar
+      authUrl += `&login_hint=${encodeURIComponent(userEmail)}&prompt=none`;
+  }
+
+  return new Promise((resolve, reject) => {
     browserAPI.identity.launchWebAuthFlow({
       url: authUrl,
       interactive: interactive
     }, async (responseUrl) => {
       if (browserAPI.runtime.lastError) {
-        return reject(new Error(`WebAuthFlow Error: ${browserAPI.runtime.lastError.message}`));
+        return reject(new Error(browserAPI.runtime.lastError.message));
       }
-      if (!responseUrl) {
-        return reject(new Error("No response URL from web auth flow"));
-      }
+      if (!responseUrl) return reject(new Error("No response URL"));
+
       try {
         const url = new URL(responseUrl);
         const params = new URLSearchParams(url.hash.substring(1));
         const token = params.get('access_token');
+        const expiresIn = params.get('expires_in') || '3600';
+
         if (token) {
-          // Guardar en caché
           memoryToken = token;
-          await browserAPI.storage.local.set({ [TOKEN_CACHE_KEY]: token });
+          const expiryTime = Date.now() + (parseInt(expiresIn) * 1000);
+          await browserAPI.storage.local.set({ 
+            "cached_oauth_token": token,
+            "cached_oauth_expiry": expiryTime
+          });
           resolve(token);
         } else {
-          reject(new Error("No access token found in response"));
+          reject(new Error("No token in response"));
         }
       } catch (e) {
-        reject(new Error("Error parsing response URL"));
+        reject(e);
       }
     });
   });
