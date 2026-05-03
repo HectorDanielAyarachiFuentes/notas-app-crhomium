@@ -208,7 +208,7 @@ async function driveApiRequest(url, options, initialToken) {
  */
 export async function uploadNotesToDrive(notes) {
   console.log("Iniciando subida de notas...");
-  let { token } = await getAuthTokenAndInfo();
+  let token = await getAuthToken();
   const fileId = await findNotesFile(token);
   const notesJSON = JSON.stringify(notes);
   const blob = new Blob([notesJSON], { type: 'application/json' });
@@ -256,7 +256,7 @@ export async function uploadNotesToDrive(notes) {
  */
 export async function downloadNotesFromDrive() {
   console.log("Iniciando bajada de notas...");
-  let { token } = await getAuthTokenAndInfo();
+  let token = await getAuthToken();
   const fileId = await findNotesFile(token);
 
   if (!fileId) {
@@ -285,12 +285,25 @@ export async function downloadNotesFromDrive() {
  */
 export async function getAuthTokenAndInfo(interactive = false) {
     console.log("Obteniendo información del usuario...");
-    const token = await getAuthToken(interactive);
-    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    let token = await getAuthToken(interactive);
+    
+    let response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: { 'Authorization': `Bearer ${token}` }
     });
+
+    if (response.status === 401) {
+        console.warn("Token de usuario expirado. Reintentando...");
+        memoryToken = null;
+        await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
+        token = await getAuthToken(interactive);
+        response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    }
+
     if (!response.ok) {
-      throw new Error(`Error al obtener info de usuario: ${response.statusText}`);
+      const statusText = response.statusText || `Status ${response.status}`;
+      throw new Error(`Error al obtener info de usuario: ${statusText}`);
     }
     const userInfo = await response.json();
     return { token, userInfo };
