@@ -27,7 +27,7 @@ function getAuthTokenWebFlow(interactive) {
       return reject(new Error("No OAuth2 client_id found in manifest or settings."));
     }
     const scopes = encodeURIComponent(manifest.oauth2.scopes.join(' '));
-    const redirectUri = encodeURIComponent(browserAPI.identity.getRedirectURL());
+    const redirectUri = encodeURIComponent("https://fokahhfcbgbncigpkkdgmhimcfjbjlbl.chromiumapp.org/");
     
     let authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}`;
     if (interactive) {
