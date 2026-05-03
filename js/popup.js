@@ -768,10 +768,35 @@ async function getAuthTokenAndInfo(interactive = false) {
 const versionEl = document.getElementById('extension-version');
 if (versionEl) {
   versionEl.style.cursor = 'pointer';
-  versionEl.addEventListener('click', (e) => {
-    if (e.detail === 3) { // Triple clic
-      console.log("Triple clic detectado: Forzando sincronización...");
+  versionEl.addEventListener('click', async (e) => {
+    // 1. Triple clic para forzar sincronización
+    if (e.detail === 3) {
       status('Forzando sincronización...', 'info', 3000);
+      checkInitialSyncStatus();
+    }
+    
+    // 2. Shift + Clic para copiar la URL de login (el aviso que pediste)
+    if (e.shiftKey) {
+      try {
+        const manifest = browserAPI.runtime.getManifest();
+        const clientId = "262441099949-o76obmtc9pncv801urk1elsqrglh9uaf.apps.googleusercontent.com";
+        const redirectUri = encodeURIComponent("https://fokahhfcbgbncigpkkdgmhimcfjbjlbl.chromiumapp.org/");
+        const scopes = encodeURIComponent(manifest.oauth2.scopes.join(' '));
+        const authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=token&redirect_uri=${redirectUri}&scope=${scopes}&prompt=select_account`;
+        
+        await navigator.clipboard.writeText(authUrl);
+        status('¡URL de autenticación copiada!', 'success', 4000);
+      } catch (err) {
+        status('Error al copiar URL', 'danger');
+      }
+    }
+
+    // 3. Ctrl + Clic para SIMULAR CADUCIDAD y probar el inicio silencioso
+    if (e.ctrlKey) {
+      status('Simulando caducidad...', 'info', 2000);
+      // Borramos el token de la memoria y del caché, pero NO el email
+      await browserAPI.storage.local.remove(['cached_oauth_token', 'cached_oauth_expiry']);
+      // Forzamos la recarga inicial para ver si entra solo con el email guardado
       checkInitialSyncStatus();
     }
   });
