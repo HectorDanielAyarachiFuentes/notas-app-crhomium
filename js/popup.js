@@ -548,7 +548,7 @@ function updateSyncUI(isConnected, userInfo = null) {
   userAvatarEl.classList.remove('loading');
 
   const syncActionsEl = document.getElementById('sync-actions');
-  if (isConnected) {
+  if (isConnected && currentMode === 'drive') {
     userAvatarEl.src = userInfo.picture || '';
     userNameEl.textContent = `Bienvenido, ${userInfo.given_name || 'Usuario'}`;
     userEmailEl.textContent = userInfo.email || '';
@@ -564,16 +564,25 @@ function updateSyncUI(isConnected, userInfo = null) {
     loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`;
     loginBtn.classList.add('active');
   } else {
+    // Si estamos en modo local o no hay conexión, mostrar el perfil local en el header
     userProfileEl.style.display = 'none';
     loginPromptEl.style.display = 'flex';
     uploadBtn.style.display = 'none'; 
     downloadBtn.style.display = 'none';
     syncActionsEl.style.display = 'none';
-    syncLoggedOutMsg.style.display = 'flex';
-
-    loginBtn.title = "Iniciar sesión";
-    loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
-    loginBtn.classList.remove('active');
+    
+    if (currentMode === 'drive') {
+      syncLoggedOutMsg.style.display = 'flex';
+      loginBtn.title = "Iniciar sesión";
+      loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
+      loginBtn.classList.remove('active');
+    } else {
+      syncLoggedOutMsg.style.display = 'none';
+      // En modo local, el loginBtn (icono de la derecha) puede servir para ir a la pestaña sync
+      loginBtn.title = "Ajustes de cuenta";
+      loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+      loginBtn.classList.remove('active');
+    }
   }
 }
 
@@ -758,13 +767,43 @@ async function applyStorageMode(mode, save = false) {
   localModePanel.style.display = mode === 'local' ? 'block' : 'none';
   driveModePanel.style.display = mode === 'drive' ? 'block' : 'none';
 
-  if (mode === 'drive' && !isLoggedIn) {
-    syncLoggedOutMsg.style.display = 'flex';
+  // Sincronizar el header con el modo activo
+  if (mode === 'local') {
+    userProfileEl.style.display = 'none';
+    loginPromptEl.style.display = 'flex';
+    syncLoggedOutMsg.style.display = 'none';
+    // Cambiar icono del header loginBtn a uno de "cuenta"
+    loginBtn.title = "Ajustes de cuenta";
+    loginBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>`;
+    loginBtn.classList.remove('active');
+  } else {
+    // Modo Drive: mostrar perfil si está logueado, sino prompt de login
+    if (isLoggedIn) {
+      userProfileEl.style.display = 'flex';
+      loginPromptEl.style.display = 'none';
+      syncLoggedOutMsg.style.display = 'none';
+      loginBtn.classList.add('active');
+    } else {
+      userProfileEl.style.display = 'none';
+      loginPromptEl.style.display = 'flex';
+      syncLoggedOutMsg.style.display = 'flex';
+      loginBtn.classList.remove('active');
+    }
+    // Restaurar icono de login original para modo Drive
+    loginBtn.title = isLoggedIn ? "Cerrar sesión" : "Iniciar sesión";
+    loginBtn.innerHTML = isLoggedIn 
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>`;
   }
 }
 
 modeLocalBtn.addEventListener('click', async () => {
   if (currentMode === 'local') return;
+  
+  if (isLoggedIn && !confirm('¿Estás seguro de salir del modo Drive? Tus notas dejarán de sincronizarse automáticamente.')) {
+    return;
+  }
+  
   await applyStorageMode('local', true);
   await renderNotes();
   status('Modo local activado.', 'info');
