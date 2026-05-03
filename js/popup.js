@@ -1,6 +1,9 @@
-import { getNotes, saveNotes } from './utils.js';
 import browserAPI from './browser-api.js';
 import { uploadNotesToDrive, downloadNotesFromDrive, removeAuthToken } from './drive-sync.js';
+import {
+  getNotes, saveNotes, getStorageMode, setStorageMode,
+  getLocalNotes, mergeLocalWithDrive, getLocalProfile, saveLocalProfile
+} from './storage-manager.js';
 
 // Detección de Panel Lateral vs Popup
 function detectSidePanel() {
@@ -52,11 +55,46 @@ const syncTabExportBtn = document.getElementById('sync-tab-export-btn');
 const pinBtn = document.getElementById('pin-btn');
 const ocrBtn = document.getElementById('ocr-btn');
 
+// Mode toggle
+const modeLocalBtn  = document.getElementById('mode-local-btn');
+const modeDriveBtn  = document.getElementById('mode-drive-btn');
+const localModePanel = document.getElementById('local-mode-panel');
+const driveModePanel = document.getElementById('drive-mode-panel');
+
+// Local profile
+const localProfileIcon   = document.getElementById('local-profile-icon');
+const localProfileName   = document.getElementById('local-profile-name');
+const localNameInput     = document.getElementById('local-name-input');
+const editLocalNameBtn   = document.getElementById('edit-local-name-btn');
+const localIconTrigger   = document.getElementById('local-icon-picker-trigger');
+const emojiPicker        = document.getElementById('emoji-picker');
+const emojiGrid          = document.getElementById('emoji-grid');
+const localHeaderIcon    = document.getElementById('local-header-icon');
+const localHeaderName    = document.getElementById('local-header-name');
+
+// Sync modal
+const syncModalOverlay = document.getElementById('sync-modal-overlay');
+const syncModalYes     = document.getElementById('sync-modal-yes');
+const syncModalNo      = document.getElementById('sync-modal-no');
+const syncModalCancel  = document.getElementById('sync-modal-cancel');
+
 let editingId = null;
 let statusTimeout = null;
 let autoSaveTimeout = null;
 let isAutoSyncEnabled = false;
 let isLoggedIn = false;
+let currentMode = 'local'; // 'local' | 'drive'
+let currentProfile = { name: 'Mi Espacio', icon: '📝' };
+
+// ─── Emojis disponibles ───
+const EMOJI_LIST = [
+  '📝','📓','📔','📒','📕','📗','📘','📙',
+  '🗒️','📋','📄','📃','🗂️','🗃️','📁','🗄️',
+  '✏️','🖊️','🖋️','🔏','🔐','🔑','💡','⭐',
+  '🌟','🔥','💎','🎯','🚀','🌈','🦋','🐾',
+  '🍀','🌺','🌸','🎨','🎭','🏆','❤️','💜',
+  '💙','💚','🧡','🤍','🌙','☀️','⚡','🌊'
+];
 
 // --- Navegación ---
 function switchTab(targetTab) {
@@ -286,14 +324,16 @@ async function performSave(isAutoSave = false) {
   }
 
   try {
-    await saveNotes(notes);
+    if (currentMode === 'drive') {
+      await saveNotes(notes);
+    } else {
+      // En modo local, usamos browserAPI directamente para saltar la lógica de Drive en storage-manager
+      await browserAPI.storage.local.set({ notes: notes });
+    }
     renderNotes();
     
     if (!isAutoSave) {
       status('Nota guardada.', 'success');
-      if (isLoggedIn && isAutoSyncEnabled) {
-        uploadNotesToDrive(notes).then(() => status('Nota sincronizada con Drive.', 'success', 1500));
-      }
       await browserAPI.storage.local.remove(['editorDraft', 'editingIdDraft']);
       clearEditor();
       switchTab('history');
@@ -525,7 +565,7 @@ function updateSyncUI(isConnected, userInfo = null) {
     loginBtn.classList.add('active');
   } else {
     userProfileEl.style.display = 'none';
-    loginPromptEl.style.display = 'block';
+    loginPromptEl.style.display = 'flex';
     uploadBtn.style.display = 'none'; 
     downloadBtn.style.display = 'none';
     syncActionsEl.style.display = 'none';
@@ -543,6 +583,19 @@ async function loginToDrive() {
   try {
     const { userInfo } = await getAuthTokenAndInfo(true);
     updateSyncUI(true, userInfo);
+
+    // Verificar si hay notas locales para ofrecer sincronización
+    const localNotes = await getLocalNotes();
+    if (localNotes.length > 0) {
+      // Mostrar modal ANTES de cambiar modo — usuario decide
+      isSyncModalOpen = true;
+      showSyncModal(localNotes.length);
+      // El modo drive se activa dentro de los handlers del modal
+    } else {
+      // Sin notas locales: pasar a Drive directamente
+      await applyStorageMode('drive', true);
+      await renderNotes();
+    }
     return true;
   } catch (error) {
     updateSyncUI(false);
@@ -563,7 +616,8 @@ async function handleSyncTabActivation() {
         status('Cerrando sesión...', 'info', -1);
         await removeAuthToken();
         updateSyncUI(false);
-        status('Sesión cerrada con éxito.', 'success');
+        await applyStorageMode('local', true);
+        status('Sesión cerrada. Modo local activado.', 'success');
       } catch (error) {
         status(`Error: ${error.message}`, 'danger');
       }
@@ -637,7 +691,9 @@ logoutBtn.addEventListener('click', async () => {
     status('Cerrando sesión...', 'info', -1);
     await removeAuthToken();
     updateSyncUI(false);
-    status('Sesión cerrada con éxito.', 'success');
+    await applyStorageMode('local', true);
+    await renderNotes();
+    status('Sesión cerrada. Modo local activado.', 'success');
   } catch (error) {
     status(`Error al cerrar sesión: ${error.message}`, 'danger', 5000);
   }
@@ -659,30 +715,22 @@ autoSyncToggle.addEventListener('change', async (e) => {
   }
 });
 
+// Bandera para evitar que autoSync corra mientras el modal está abierto
+let isSyncModalOpen = false;
+
 async function autoSyncNotes() {
-  if (!isLoggedIn || !isAutoSyncEnabled) return;
+  if (!isLoggedIn || !isAutoSyncEnabled || isSyncModalOpen || currentMode !== 'drive') return;
   status('Sincronizando notas...', 'info', -1);
   try {
-    const localNotes = await getNotes();
-    const driveNotes = await downloadNotesFromDrive();
-    if (!driveNotes) {
-      await uploadNotesToDrive(localNotes);
-      status('Notas locales subidas a Drive.', 'success');
-      return;
-    }
-    const notesMap = new Map();
-    [...localNotes, ...driveNotes].forEach(note => {
-      const existing = notesMap.get(note.id);
-      if (!existing || note.updatedAt > existing.updatedAt) {
-        notesMap.set(note.id, note);
-      }
-    });
-    const mergedNotes = Array.from(notesMap.values());
-    await saveNotes(mergedNotes);
-    await uploadNotesToDrive(mergedNotes);
+    const merged = await mergeLocalWithDrive();
     await renderNotes();
     status('Notas sincronizadas con éxito.', 'success');
   } catch (error) {
+    // Si el error es de autenticación y ya no estamos en modo Drive o sesión, ignorar silenciosamente
+    if (!isLoggedIn || currentMode !== 'drive') {
+      console.warn('Auto-sync cancelado o fallido tras cambio de modo/sesión:', error.message);
+      return;
+    }
     status(`Error de sincronización: ${error.message}`, 'danger', 5000);
   }
 }
@@ -700,12 +748,157 @@ async function checkInitialSyncStatus() {
   }
 }
 
+// ─── Modo de almacenamiento ───
+async function applyStorageMode(mode, save = false) {
+  currentMode = mode;
+  if (save) await setStorageMode(mode);
+
+  modeLocalBtn.classList.toggle('active', mode === 'local');
+  modeDriveBtn.classList.toggle('active', mode === 'drive');
+  localModePanel.style.display = mode === 'local' ? 'block' : 'none';
+  driveModePanel.style.display = mode === 'drive' ? 'block' : 'none';
+
+  if (mode === 'drive' && !isLoggedIn) {
+    syncLoggedOutMsg.style.display = 'flex';
+  }
+}
+
+modeLocalBtn.addEventListener('click', async () => {
+  if (currentMode === 'local') return;
+  await applyStorageMode('local', true);
+  await renderNotes();
+  status('Modo local activado.', 'info');
+});
+
+modeDriveBtn.addEventListener('click', async () => {
+  if (currentMode === 'drive') return;
+  await applyStorageMode('drive', true);
+  if (!isLoggedIn) {
+    status('Iniciá sesión para usar Drive.', 'info', 3000);
+  } else {
+    await renderNotes();
+    status('Modo Drive activado.', 'success');
+  }
+});
+
+// ─── Perfil Local ───
+function buildEmojiPicker(selectedIcon) {
+  emojiGrid.innerHTML = '';
+  EMOJI_LIST.forEach(emoji => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-btn' + (emoji === selectedIcon ? ' selected' : '');
+    btn.textContent = emoji;
+    btn.addEventListener('click', async () => {
+      currentProfile.icon = emoji;
+      await saveLocalProfile(currentProfile);
+      localProfileIcon.textContent = emoji;
+      localHeaderIcon.textContent = emoji;
+      emojiPicker.style.display = 'none';
+      status('Ícono actualizado.', 'success');
+    });
+    emojiGrid.appendChild(btn);
+  });
+}
+
+localIconTrigger.addEventListener('click', () => {
+  const visible = emojiPicker.style.display === 'block';
+  if (!visible) buildEmojiPicker(currentProfile.icon);
+  emojiPicker.style.display = visible ? 'none' : 'block';
+});
+
+editLocalNameBtn.addEventListener('click', () => {
+  localNameInput.value = currentProfile.name;
+  localNameInput.style.display = 'block';
+  localProfileName.style.display = 'none';
+  editLocalNameBtn.style.display = 'none';
+  localNameInput.focus();
+});
+
+async function commitLocalName() {
+  const newName = localNameInput.value.trim() || 'Mi Espacio';
+  currentProfile.name = newName;
+  await saveLocalProfile(currentProfile);
+  localProfileName.textContent = newName;
+  localHeaderName.textContent = newName;
+  localNameInput.style.display = 'none';
+  localProfileName.style.display = '';
+  editLocalNameBtn.style.display = '';
+  status('Nombre actualizado.', 'success');
+}
+
+localNameInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') commitLocalName();
+  if (e.key === 'Escape') {
+    localNameInput.style.display = 'none';
+    localProfileName.style.display = '';
+    editLocalNameBtn.style.display = '';
+  }
+});
+localNameInput.addEventListener('blur', commitLocalName);
+
+function applyLocalProfile(profile) {
+  currentProfile = profile;
+  localProfileIcon.textContent = profile.icon;
+  localProfileName.textContent = profile.name;
+  localHeaderIcon.textContent = profile.icon;
+  localHeaderName.textContent = profile.name;
+}
+
+// ─── Modal de sincronización ───
+function showSyncModal(localCount) {
+  document.getElementById('sync-modal-body').textContent =
+    `Tenés ${localCount} nota${localCount !== 1 ? 's' : ''} guardada${localCount !== 1 ? 's' : ''} localmente. ¿Querés sincronizarlas con Google Drive?`;
+  syncModalOverlay.style.display = 'flex';
+}
+
+function hideSyncModal() {
+  syncModalOverlay.style.display = 'none';
+  isSyncModalOpen = false;
+}
+
+syncModalYes.addEventListener('click', async () => {
+  hideSyncModal();
+  await applyStorageMode('drive', true);
+  status('Fusionando notas...', 'info', -1);
+  try {
+    const merged = await mergeLocalWithDrive();
+    await renderNotes();
+    status(`${merged.length} notas sincronizadas con Drive. ✓`, 'success', 3000);
+  } catch (e) {
+    status('Error al sincronizar: ' + e.message, 'danger', 4000);
+  }
+});
+
+syncModalNo.addEventListener('click', async () => {
+  hideSyncModal();
+  await applyStorageMode('drive', true);
+  status('Usando solo Drive (notas locales no subidas).', 'info', 3000);
+  await renderNotes();
+});
+
+syncModalCancel.addEventListener('click', async () => {
+  hideSyncModal();
+  // Revertir: cerrar sesión y volver a modo local
+  await removeAuthToken();
+  updateSyncUI(false);
+  await applyStorageMode('local', true);
+  status('Inicio de sesión cancelado.', 'info');
+});
+
 // --- Inicialización ---
 async function init() {
   if (window.innerWidth > 500 || !window.matchMedia('(max-width: 450px)').matches) {
      document.body.style.width = '100%';
      document.body.style.height = '100vh';
   }
+
+  // Cargar modo guardado
+  const savedMode = await getStorageMode();
+  await applyStorageMode(savedMode);
+
+  // Cargar perfil local
+  const profile = await getLocalProfile();
+  applyLocalProfile(profile);
 
   const { autoSyncEnabled } = await browserAPI.storage.sync.get({ autoSyncEnabled: false });
   isAutoSyncEnabled = autoSyncEnabled;
@@ -719,7 +912,7 @@ async function init() {
       contentEl.value = editorDraft.content || '';
     }
     editorTitleEl.textContent = 'Editar nota';
-    newBtn.innerHTML = 'Cancelar'; 
+    newBtn.innerHTML = 'Cancelar';
     newBtn.classList.add('danger-text');
   } else if (editorDraft && (editorDraft.title || editorDraft.content)) {
     titleEl.value = editorDraft.title || '';
@@ -732,7 +925,7 @@ async function init() {
 
   updateCharCount();
   renderNotes();
-  
+
   if (versionSpan) {
     const manifest = browserAPI.runtime.getManifest();
     versionSpan.textContent = manifest.version;
@@ -740,7 +933,6 @@ async function init() {
 
   await checkInitialSyncStatus();
 
-  // Soporte para apertura directa de vistas mediante parámetros de URL
   const urlParams = new URLSearchParams(window.location.search);
   const view = urlParams.get('view');
   if (view === 'settings' && settingsDropdown) {
