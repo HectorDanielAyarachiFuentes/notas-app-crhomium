@@ -44,6 +44,7 @@ const tabs = document.querySelectorAll('.tab-button');
 const tabPanels = document.querySelectorAll('.tab-panel');
 const searchInput = document.getElementById('search-input');
 const settingsBtn = document.getElementById('settings-btn');
+const deleteAllBtn = document.getElementById('deleteAllBtn');
 const settingsDropdown = document.getElementById('settings-dropdown');
 const versionSpan = document.getElementById('extension-version');
 const themeSelector = document.getElementById('theme-selector');
@@ -373,6 +374,27 @@ newBtn.addEventListener('click', () => {
 searchInput.addEventListener('input', (e) => {
   renderNotes(e.target.value);
 });
+
+if (deleteAllBtn) {
+  deleteAllBtn.addEventListener('click', async () => {
+    const notes = await getNotes();
+    if (notes.length === 0) {
+      status('No hay notas para borrar.', 'info');
+      return;
+    }
+    if (!confirm('¿Estás seguro de que quieres borrar TODAS las notas? Esta acción no se puede deshacer.')) return;
+    
+    if (currentMode === 'drive') {
+      await saveNotes([]);
+    } else {
+      await browserAPI.storage.local.set({ notes: [] });
+    }
+    
+    renderNotes();
+    clearEditor();
+    status('Todas las notas han sido eliminadas.', 'success');
+  });
+}
 
 settingsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
