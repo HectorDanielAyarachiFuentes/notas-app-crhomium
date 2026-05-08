@@ -222,11 +222,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           for (let w = 0; w < line.words.length; w++) {
             const word = line.words[w];
             const conf = word.confidence || 0;
-            const text = (word.text || '').trim();
+            let text = (word.text || '').trim();
             if (!text) continue;
 
             // Eliminar tokens que son puro ruido visual (|, _, ~, etc.)
             if (/^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
+
+            // Eliminar puntuación suelta con baja confianza (., ,, ;, :, etc.)
+            if (conf < 60 && /^[.,;:!?'"'`´""''«»]+$/.test(text)) continue;
 
             // Intentar mapear a emoji si confianza es baja
             if (conf < 50) {
@@ -258,10 +261,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
+              // Si es 1-2 chars con confianza < 40, muy probable ruido → eliminar
+              if (text.length <= 2 && conf < 40) continue;
 
-              // Si es 1-2 chars con confianza < 35, es ruido → eliminar
-              if (text.length <= 2 && conf < 35) continue;
+              // Si es 1-3 chars sin vocales con confianza < 45, es basura
+              if (text.length <= 3 && conf < 45 && !/[aeiouáéíóúAEIOUÁÉÍÓÚ]/.test(text)) continue;
             }
+
+            // Limpiar apóstrofes/comillas falsas pegadas al inicio o final de palabra
+            // Tesseract a menudo lee "a ir sola a" como "air sola'al"
+            text = text.replace(/^['`´'"]+/, '');
+            text = text.replace(/['`´'"]+$/, '');
+            if (!text) continue;
 
             cleanWords.push(text);
           }
@@ -314,21 +325,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           // 4a. Limpiar artefactos al inicio de línea (chars sueltos por ruido)
           text = text.replace(/^["""''`´]\s+/, '');
+          // Fragmento corto (1-3 chars) + punto/coma + espacio al inicio → ruido OCR
+          // Ejemplo: "ow A." → se elimina, "El texto" → se mantiene
+          text = text.replace(/^[a-zA-Z]{1,3}\s*[.,;:]\s+/g, '');
           // Char suelto al inicio solo si NO forma parte de una palabra
           text = text.replace(/^([a-z])\s+(?=[A-Z@#\d])/, '');
+          // Letra mayúscula sola + punto al inicio (como "A.") seguida de texto
+          text = text.replace(/^[A-Z]\.\s+/, '');
 
           // 4b. Limpiar artefactos al final de línea
           text = text.replace(/\s+[Vv]{1,2}$/, '');    // "Vv" al final → flecha ↓ mal leída
           text = text.replace(/\s+[|\\\/]$/, '');       // Barras sueltas al final
+          text = text.replace(/\s+[A-Z]\.$/, '');       // Letra + punto suelto al final
 
           // 4c. Normalizar espacios
           text = text.replace(/  +/g, ' ').trim();
 
-          // 4d. Correcciones de línea restantes
+          // 4d. Correcciones comunes de OCR en español
           text = text.replace(/\bl\b(?=\s+\d)/g, '↳');  // l sola antes de número → bullet
+          // Apóstrofes que fusionan preposiciones: "sola'al" → "sola al", "ir'a" → "ir a"
+          text = text.replace(/(\w)'(\w)/g, (match, before, after) => {
+            // Si el apóstrofe une letras en español (no contracciones legítimas como inglés)
+            // y una de las partes es una preposición corta, separar
+            const afterWord = after + text.slice(text.indexOf(match) + match.length).split(/\s/)[0];
+            if (/^(a|al|el|la|en|de|del|un|una|y|o|e)$/i.test(afterWord) || 
+                /^(a|al|el|la|en|de|del|un|una|y|o|e)$/i.test(after)) {
+              return before + ' ' + after;
+            }
+            return match;
+          });
 
           // 4e. Ignorar líneas vacías o con un solo char sin sentido
           if (text.length <= 1 && !/[\d@#]/.test(text)) continue;
+          // Ignorar líneas muy cortas (≤3 chars) que son solo letras sueltas sin sentido
+          if (text.length <= 3 && !/[\d@#]/.test(text) && !/^[A-ZÁÉÍÓÚ]/.test(text)) continue;
 
           // 4f. Detectar gap vertical grande → insertar línea en blanco (párrafo)
           if (i > 0 && mergedLines[i - 1].bbox && line.bbox) {
@@ -345,6 +375,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let formattedText = formattedLines.join('\n').trim();
         // Colapsar 3+ saltos de línea consecutivos a máximo 2 (un párrafo)
         formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
+
+        // Correcciones comunes de OCR español: preposiciones fusionadas
+        // "No vuelvo air" → "No vuelvo a ir"
+        // "vuelvo ala fiesta" → "vuelvo a la fiesta"
+        const spanishFixes = [
+          [/\bair\b/g, 'a ir'],
+          [/\bala\b(?=\s)/g, 'a la'],
+          [/\bael\b/g, 'a el'],
+          [/\bdel a\b/g, 'de la'],
+          [/\benla\b/g, 'en la'],
+          [/\benel\b/g, 'en el'],
+          [/\bporque\s*que\b/g, 'porque'],
+          [/\bque que\b/g, 'que'],
+        ];
+        for (const [pattern, replacement] of spanishFixes) {
+          formattedText = formattedText.replace(pattern, replacement);
+        }
+        // Limpiar espacios dobles residuales
+        formattedText = formattedText.replace(/  +/g, ' ');
 
         // ── Paso 6: Fallback — detección de emojis por color ─────────────────
         // Si Tesseract devolvió texto vacío o muy corto, escanear la imagen
