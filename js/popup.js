@@ -515,31 +515,15 @@ if (ocrBtn) {
         return;
       }
 
-      status('Selecciona el área de texto...', 'info', -1);
-      setButtonLoading(ocrBtn, true, 'Procesando...');
+      // Enviar la solicitud OCR al background y cerrar el popup inmediatamente
+      // para no tapar la pantalla durante la selección del área.
+      // El texto extraído se guardará automáticamente como nota desde background.js
+      chrome.runtime.sendMessage({ action: 'performBackgroundOCR', tab });
       
-      const response = await chrome.runtime.sendMessage({ action: 'performBackgroundOCR', tab });
-      
-      if (response.success) {
-        if (response.text) {
-          contentEl.value += (contentEl.value ? '\n\n' : '') + response.text;
-          if (!titleEl.value) titleEl.value = tab.title || 'Nota OCR';
-          updateCharCount();
-          triggerAutoSave();
-          status('¡OCR completado!', 'success');
-          switchTab('create');
-        } else {
-          status('Iniciando selección... El texto se guardará automáticamente al finalizar.', 'info', 5000);
-        }
-      } else if (!response.cancelled) {
-        status('Error OCR: ' + response.error, 'danger');
-      } else {
-        status('OCR cancelado.', 'info');
-      }
+      // Cerrar el popup para liberar la pantalla completa
+      window.close();
     } catch (e) {
       status('Error: ' + e.message, 'danger');
-    } finally {
-      setButtonLoading(ocrBtn, false);
     }
   });
 }
