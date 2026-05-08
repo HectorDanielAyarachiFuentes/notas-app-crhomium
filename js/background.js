@@ -206,27 +206,42 @@ async function handleBackgroundOCR(tab) {
       throw new Error('No se puede acceder a esta página por restricciones del navegador (ej. páginas internas de Chrome).');
     }
 
-    // Inyectar polyfill y dependencias
-    await chrome.scripting.executeScript({
+    // Verificar si los scripts OCR ya están inyectados en esta pestaña
+    const [checkResult] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: [
-        'OCR/scripts/crossbrowser.js',
-        'OCR/scripts/jquery.min.js',
-        'OCR/scripts/tesseract.min.js',
-        'OCR/scripts/overlay.js',
-        'OCR/scripts/cs.js'
-      ]
+      func: () => typeof window.__ocrScriptsLoaded !== 'undefined'
     });
+    const alreadyInjected = checkResult && checkResult.result;
 
-    await chrome.scripting.insertCSS({
-      target: { tabId: tab.id },
-      files: [
-        'OCR/styles/cs.css'
-      ]
-    });
+    if (!alreadyInjected) {
+      // Inyectar polyfill y dependencias solo si no están ya cargadas
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: [
+          'OCR/scripts/crossbrowser.js',
+          'OCR/scripts/jquery.min.js',
+          'OCR/scripts/tesseract.min.js',
+          'OCR/scripts/overlay.js',
+          'OCR/scripts/cs.js'
+        ]
+      });
 
-    // Esperar un momento para la inicialización de los scripts
-    await new Promise(r => setTimeout(r, 400));
+      await chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: [
+          'OCR/styles/cs.css'
+        ]
+      });
+
+      // Marcar que los scripts ya fueron inyectados
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => { window.__ocrScriptsLoaded = true; }
+      });
+
+      // Esperar un momento para la inicialización de los scripts
+      await new Promise(r => setTimeout(r, 400));
+    }
 
     // Activar selección
     chrome.tabs.sendMessage(tab.id, { evt: 'enableselection' });

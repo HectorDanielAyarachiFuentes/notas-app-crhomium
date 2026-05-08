@@ -2,11 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+// Guard: evitar re-declaración si el script se inyecta más de una vez
+if (typeof browsers === 'undefined') {
+
 /**
  * Detects what browser the extension is running on
  * (Currently, all Chromium browsers are listed under Chrome)
  * @returns Browser enum
  */
+var browsers = {
+    FIREFOX: 0,
+    CHROME: 1,
+    EDGE: 2,
+    OPERA: 3
+};
+
 function detectBrowser() {
     if (typeof browser != "object") browser = chrome;
 
@@ -24,7 +34,7 @@ function detectBrowser() {
  * @returns Browser Name
  */
 function getBrowserName() {
-    const names = [
+    var names = [
         'Firefox',
         'Chrome',
         'Edge',
@@ -34,10 +44,6 @@ function getBrowserName() {
     return names[runningOn];
 }
 
-const browsers = {
-    FIREFOX: 0,
-    CHROME: 1,
-    EDGE: 2,
-    OPERA: 3
-};
-const runningOn = detectBrowser();
+var runningOn = detectBrowser();
+
+} // fin del guard
