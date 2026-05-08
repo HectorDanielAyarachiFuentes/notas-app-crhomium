@@ -40,13 +40,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
-              const scale = 3; // Escalar 3x para alta resolución
+              // Escalar dinámicamente: Tesseract prefiere texto de ~30px de alto.
+              // Imágenes enormes (ej: 2000px) confunden al motor, y pequeñas necesitan escalado.
+              // Apuntamos a un ancho óptimo de ~1500px, con un factor máximo de 3x y mínimo de 1x.
+              const scale = Math.max(1, Math.min(3, 1500 / img.width));
               canvas.width = img.width * scale;
               canvas.height = img.height * scale;
               const ctx = canvas.getContext('2d');
 
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
+              // DESACTIVAR el suavizado (anti-aliasing). El suavizado difumina los bordes
+              // de las fuentes condensadas/pegadas, haciendo que Tesseract fusione letras
+              // (ej: "municipales" -> "Muelas"). Bordes nítidos (crisp edges) son clave para OCR.
+              ctx.imageSmoothingEnabled = false;
 
               // 1. Dibujar imagen escalada
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -57,34 +62,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const origColors = new Uint8Array(data.length);
               origColors.set(data);
 
-              // 2. Convertir a grises con luminancia perceptual y buscar min/max
-              //    (naranja RGB(255,165,0) → ~173; negro → 0; blanco → 255)
-              let minGray = 255, maxGray = 0;
-              const grays = new Uint8Array(canvas.width * canvas.height);
-              let pi = 0;
+              // 2. Detectar si hay texto coloreado saturado (amarillo, naranja, etc.)
+              //    sobre fondo complejo (fotos, paisajes). En ese caso usar máscara
+              //    por saturación para aislar el texto del fondo.
+              let highSatCount = 0;
+              const totalPixels = canvas.width * canvas.height;
               for (let i = 0; i < data.length; i += 4) {
-                let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-                grays[pi++] = g;
-                if (g < minGray) minGray = g;
-                if (g > maxGray) maxGray = g;
+                const r = data[i], g = data[i+1], b = data[i+2];
+                const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+                const sat = mx === 0 ? 0 : (mx - mn) / mx;
+                if (sat > 0.4 && mx > 120) highSatCount++;
               }
+              const hasSaturatedText = highSatCount > totalPixels * 0.05;
 
-              // 3. Histogram stretching: estirar el rango real al rango 0-255
-              //    Maximiza el contraste sin destruir información (Tesseract binariza internamente)
-              const range = maxGray - minGray || 1;
-              let brightnessSum = 0;
-              pi = 0;
-              for (let i = 0; i < data.length; i += 4) {
-                let stretched = Math.round((grays[pi++] - minGray) / range * 255);
-                brightnessSum += stretched;
-                data[i] = data[i+1] = data[i+2] = stretched;
-              }
-
-              // 4. Si fondo oscuro, invertir para que Tesseract reciba texto oscuro sobre fondo claro
-              const avgBrightness = brightnessSum / (data.length / 4);
-              if (avgBrightness < 127) {
+              if (hasSaturatedText) {
+                // Modo saturación: el texto tiene color fuerte (amarillo/blanco/rojo)
+                // → Convertir píxeles saturados+brillantes a negro, resto a blanco
+                // NOTA: NO usar lum>210 porque convierte fondo claro en negro y pierde líneas
                 for (let i = 0; i < data.length; i += 4) {
-                  data[i] = data[i+1] = data[i+2] = 255 - data[i];
+                  const r = data[i], g = data[i+1], b = data[i+2];
+                  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+                  const sat = mx === 0 ? 0 : (mx - mn) / mx;
+                  // Solo píxeles con saturación real → texto coloreado → negro
+                  if (sat > 0.3 && mx > 130) {
+                    data[i] = data[i+1] = data[i+2] = 0;
+                  } else {
+                    data[i] = data[i+1] = data[i+2] = 255;
+                  }
+                }
+              } else {
+                // Modo estándar: grises + histogram stretching
+                let minGray = 255, maxGray = 0;
+                const grays = new Uint8Array(totalPixels);
+                let pi = 0;
+                for (let i = 0; i < data.length; i += 4) {
+                  let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+                  grays[pi++] = g;
+                  if (g < minGray) minGray = g;
+                  if (g > maxGray) maxGray = g;
+                }
+                const range = maxGray - minGray || 1;
+                let brightnessSum = 0;
+                pi = 0;
+                for (let i = 0; i < data.length; i += 4) {
+                  let stretched = Math.round((grays[pi++] - minGray) / range * 255);
+                  brightnessSum += stretched;
+                  data[i] = data[i+1] = data[i+2] = stretched;
+                }
+                const avgBrightness = brightnessSum / totalPixels;
+                if (avgBrightness < 127) {
+                  for (let i = 0; i < data.length; i += 4) {
+                    data[i] = data[i+1] = data[i+2] = 255 - data[i];
+                  }
                 }
               }
 
@@ -214,7 +243,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           EMOJI_KEYS_NOSPACE[k.replace(/\s/g, '')] = EMOJI_MISREADS[k];
         }
 
-        // ── Paso 3: Reconstruir texto usando confianza + emoji mapping ───────
+        // ── Paso 3: Reconstruir texto con validación por diccionario ─────────
+        // Sistema integral: cada palabra se valida contra el diccionario español.
+        // Si conf > 80%: aceptar (Tesseract seguro)
+        // Si conf 50-80%: validar contra diccionario, intentar corregir si no está
+        // Si conf < 50%: solo aceptar si está en diccionario o es emoji
         for (const line of mergedLines) {
           if (!line.words || !line.words.length) continue;
 
@@ -225,80 +258,88 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             let text = (word.text || '').trim();
             if (!text) continue;
 
-            // Eliminar tokens que son puro ruido visual (|, _, ~, etc.)
+            // Eliminar tokens de ruido visual
             if (/^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
 
-            // Eliminar puntuación suelta con baja confianza (., ,, ;, :, etc.)
+            // Eliminar puntuación suelta con baja confianza
             if (conf < 60 && /^[.,;:!?'"'`´""''«»]+$/.test(text)) continue;
 
-            // Intentar mapear a emoji si confianza es baja
+            // Limpiar comillas/apóstrofes pegados
+            text = text.replace(/^[''`´"""\u201c\u201d]+/, '');
+            text = text.replace(/[''`´"""\u201c\u201d]+$/, '');
+            if (!text) continue;
+
+            // ── Emoji mapping (solo baja confianza) ──
             if (conf < 50) {
               const noSpace = text.replace(/\s/g, '');
-
-              // Match directo
-              if (EMOJI_MISREADS[text]) {
-                cleanWords.push(EMOJI_MISREADS[text]);
-                continue;
-              }
-              // Match sin espacios (para "E 8" → "E8" → 😎)
-              if (EMOJI_KEYS_NOSPACE[noSpace]) {
-                cleanWords.push(EMOJI_KEYS_NOSPACE[noSpace]);
-                continue;
-              }
-
-              // Multi-word emoji: combinar con la palabra siguiente
+              if (EMOJI_MISREADS[text]) { cleanWords.push(EMOJI_MISREADS[text]); continue; }
+              if (EMOJI_KEYS_NOSPACE[noSpace]) { cleanWords.push(EMOJI_KEYS_NOSPACE[noSpace]); continue; }
               if (w + 1 < line.words.length) {
-                const nextWord = line.words[w + 1];
-                const nextConf = nextWord.confidence || 0;
-                const nextText = (nextWord.text || '').trim();
-                if (nextConf < 50) {
-                  const combined = text + nextText;
+                const nw = line.words[w + 1];
+                if ((nw.confidence || 0) < 50) {
+                  const combined = text + (nw.text || '').trim();
                   if (EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]) {
                     cleanWords.push(EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]);
-                    w++;
-                    continue;
+                    w++; continue;
                   }
                 }
               }
-
-              // Si es 1-2 chars con confianza < 40, muy probable ruido → eliminar
-              if (text.length <= 2 && conf < 40) continue;
-
-              // Si es 1-3 chars sin vocales con confianza < 45, es basura
-              if (text.length <= 3 && conf < 45 && !/[aeiouáéíóúAEIOUÁÉÍÓÚ]/.test(text)) continue;
             }
 
-            // Limpiar apóstrofes/comillas falsas pegadas al inicio o final de palabra
-            // Tesseract a menudo lee "a ir sola a" como "air sola'al"
-            text = text.replace(/^['`´'"]+/, '');
-            text = text.replace(/['`´'"]+$/, '');
-            if (!text) continue;
+            // ── Validación por diccionario ──
+            const isValid = isSpanishWord(text);
 
-            cleanWords.push(text);
+            if (conf >= 80) {
+              // Alta confianza: aceptar, pero intentar corregir si no es palabra válida
+              if (!isValid && text.length >= 4) {
+                const split = trySplitMergedWord(text);
+                if (split) { cleanWords.push(split); continue; }
+                const corrected = autoCorrectOCRWord(text);
+                if (corrected) { cleanWords.push(corrected); continue; }
+              }
+              cleanWords.push(text);
+            } else if (conf >= 50) {
+              // Confianza media: aceptar si es palabra válida o es larga
+              if (isValid) {
+                cleanWords.push(text);
+              } else if (text.length >= 4) {
+                const split = trySplitMergedWord(text);
+                if (split) { cleanWords.push(split); continue; }
+                const corrected = autoCorrectOCRWord(text);
+                if (corrected) { cleanWords.push(corrected); continue; }
+                // Mantener si tiene vocales (probablemente es palabra real no en diccionario)
+                if (/[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
+              }
+              // Si es corta y no válida → descartar
+            } else {
+              // Baja confianza (<50%): solo aceptar si está en diccionario
+              if (isValid) {
+                cleanWords.push(text);
+              } else if (text.length >= 4) {
+                // Si la confianza es muy baja, la fuzzy correction es nuestra salvación
+                const corrected = autoCorrectOCRWord(text);
+                if (corrected) { cleanWords.push(corrected); continue; }
+                const split = trySplitMergedWord(text);
+                if (split) { cleanWords.push(split); continue; }
+                // Solo mantener si es larga y tiene vocales (posible palabra fuera de dicc)
+                if (text.length >= 5 && /[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
+              }
+              // Si no está en diccionario, no se puede corregir y es corta → basura, descartar
+            }
           }
           line.text = cleanWords.join(' ');
         }
 
         // ── Paso 3b: Limpieza contextual de líneas de reacciones (YouTube) ──
-        // Detecta variantes de la línea "👍 N 👎 Responder" que YouTube muestra.
-        // Maneja: con/sin número, separadores (—, -, |), emojis ya reemplazados.
         for (const line of mergedLines) {
           const text = (line.text || '').trim();
           if (!/Responder/i.test(text)) continue;
-
-          // Limpiar separadores que Tesseract lee del UI (—, -, |, etc.)
           let cleaned = text.replace(/[—–\-|]/g, ' ').replace(/  +/g, ' ').trim();
-
-          // Extraer solo el número si hay uno
           const numMatch = cleaned.match(/(\d+)/);
           const count = numMatch ? numMatch[1] : '';
-
-          // Si la línea tiene "Responder" y es corta (típica de YouTube reactions)
-          // y tiene mayoritariamente tokens cortos/emojis → formatear
           const parts = cleaned.split(/\s+/);
           const responderIdx = parts.findIndex(p => /^Responder$/i.test(p));
           if (responderIdx >= 0 && parts.length <= 6) {
-            // Contar cuántos tokens no-numéricos y no-"Responder" hay
             const junk = parts.filter(p => !/^\d+$/.test(p) && !/^Responder$/i.test(p) && p.length <= 4);
             if (junk.length >= 1) {
               line.text = count ? '👍 ' + count + ' 👎 Responder' : '👍 👎 Responder';
@@ -306,7 +347,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
 
-        // ── Paso 3: Calcular altura promedio para detección de párrafos ──────
+        // ── Paso 3c: Filtrar líneas basura por confianza promedio ────────────
+        // Líneas como "eimierviónn" o ". EE" tienen confianza baja en todas sus palabras
+        for (const line of mergedLines) {
+          if (!line.words || !line.words.length) continue;
+          const wordsWithConf = line.words.filter(w => (w.text || '').trim().length > 0);
+          if (wordsWithConf.length === 0) { line.text = ''; continue; }
+          const avgConf = wordsWithConf.reduce((sum, w) => sum + (w.confidence || 0), 0) / wordsWithConf.length;
+          const lineText = (line.text || '').trim();
+          // Línea con confianza promedio < 40% y texto corto (< 10 chars) → basura
+          if (avgConf < 40 && lineText.length < 10) {
+            line.text = '';
+            continue;
+          }
+          // Línea con confianza promedio < 25% independientemente del largo → basura
+          if (avgConf < 25) {
+            line.text = '';
+            continue;
+          }
+          // Línea que es una sola palabra sin sentido (no tiene vocales y < 50% conf)
+          if (wordsWithConf.length === 1 && avgConf < 50 && !/[aeiouáéíóúAEIOUÁÉÍÓÚ]/.test(lineText)) {
+            line.text = '';
+          }
+        }
+
+        // ── Paso 4: Calcular altura promedio para detección de párrafos ──────
         let totalLineHeight = 0, validLineCount = 0;
         for (const line of mergedLines) {
           if (line.bbox) {
@@ -317,50 +382,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const avgLineHeight = validLineCount > 0 ? totalLineHeight / validLineCount : 40;
         const PARAGRAPH_GAP = avgLineHeight * 0.8;
 
-        // ── Paso 4: Ensamblar con párrafos, limpieza final por línea ─────────
+        // ── Paso 5: Ensamblar con párrafos, limpieza final por línea ─────────
         const formattedLines = [];
         for (let i = 0; i < mergedLines.length; i++) {
           const line = mergedLines[i];
           let text = (line.text || '').trimEnd();
+          if (!text) continue;
 
-          // 4a. Limpiar artefactos al inicio de línea (chars sueltos por ruido)
-          text = text.replace(/^["""''`´]\s+/, '');
-          // Fragmento corto (1-3 chars) + punto/coma + espacio al inicio → ruido OCR
-          // Ejemplo: "ow A." → se elimina, "El texto" → se mantiene
+          // 5a. Limpiar artefactos al inicio de línea
+          text = text.replace(/^[\x22\u201c\u201d\u201e\u201f\u2018\u2019\u00ab\u00bb"""''`´]+\s*/, '');
           text = text.replace(/^[a-zA-Z]{1,3}\s*[.,;:]\s+/g, '');
-          // Char suelto al inicio solo si NO forma parte de una palabra
-          text = text.replace(/^([a-z])\s+(?=[A-Z@#\d])/, '');
-          // Letra mayúscula sola + punto al inicio (como "A.") seguida de texto
+          text = text.replace(/^[a-z]{1,2}\s+(?=[A-Z])/, '');
           text = text.replace(/^[A-Z]\.\s+/, '');
 
-          // 4b. Limpiar artefactos al final de línea
-          text = text.replace(/\s+[Vv]{1,2}$/, '');    // "Vv" al final → flecha ↓ mal leída
-          text = text.replace(/\s+[|\\\/]$/, '');       // Barras sueltas al final
-          text = text.replace(/\s+[A-Z]\.$/, '');       // Letra + punto suelto al final
+          // 5b. Limpiar artefactos al final de línea
+          text = text.replace(/\s+[Vv]{1,2}$/, '');
+          text = text.replace(/\s+[|\\\/]$/, '');
+          text = text.replace(/\s+[A-Z]\.$/, '');
+          // Quitar dos puntos/coma sueltos al final que no sean parte del texto
+          text = text.replace(/[:;]$/, '');
 
-          // 4c. Normalizar espacios
+          // 5c. UNIVERSAL: En español los apóstrofes NUNCA unen palabras
+          // Reemplazar TODOS los apóstrofes entre letras por espacio
+          // "lo'que" → "lo que", "volveria'a'dejar" → "volveria a dejar", "me'he" → "me he"
+          text = text.replace(/(\w)[''`´'](\w)/g, '$1 $2');
+
+          // 5d. Normalizar espacios
           text = text.replace(/  +/g, ' ').trim();
 
-          // 4d. Correcciones comunes de OCR en español
-          text = text.replace(/\bl\b(?=\s+\d)/g, '↳');  // l sola antes de número → bullet
-          // Apóstrofes que fusionan preposiciones: "sola'al" → "sola al", "ir'a" → "ir a"
-          text = text.replace(/(\w)'(\w)/g, (match, before, after) => {
-            // Si el apóstrofe une letras en español (no contracciones legítimas como inglés)
-            // y una de las partes es una preposición corta, separar
-            const afterWord = after + text.slice(text.indexOf(match) + match.length).split(/\s/)[0];
-            if (/^(a|al|el|la|en|de|del|un|una|y|o|e)$/i.test(afterWord) || 
-                /^(a|al|el|la|en|de|del|un|una|y|o|e)$/i.test(after)) {
-              return before + ' ' + after;
-            }
-            return match;
-          });
+          // 5e. Correcciones OCR español
+          text = text.replace(/\bl\b(?=\s+\d)/g, '↳');
 
-          // 4e. Ignorar líneas vacías o con un solo char sin sentido
+          // 5f. Ignorar líneas vacías o basura
           if (text.length <= 1 && !/[\d@#]/.test(text)) continue;
-          // Ignorar líneas muy cortas (≤3 chars) que son solo letras sueltas sin sentido
           if (text.length <= 3 && !/[\d@#]/.test(text) && !/^[A-ZÁÉÍÓÚ]/.test(text)) continue;
 
-          // 4f. Detectar gap vertical grande → insertar línea en blanco (párrafo)
+          // 5g. Detectar gap vertical grande → párrafo
           if (i > 0 && mergedLines[i - 1].bbox && line.bbox) {
             const gap = line.bbox.y0 - mergedLines[i - 1].bbox.y1;
             if (gap > PARAGRAPH_GAP) {
@@ -377,17 +434,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
 
         // Correcciones comunes de OCR español: preposiciones fusionadas
-        // "No vuelvo air" → "No vuelvo a ir"
-        // "vuelvo ala fiesta" → "vuelvo a la fiesta"
         const spanishFixes = [
           [/\bair\b/g, 'a ir'],
           [/\bala\b(?=\s)/g, 'a la'],
           [/\bael\b/g, 'a el'],
+          [/\bdela\b/g, 'de la'],
           [/\bdel a\b/g, 'de la'],
           [/\benla\b/g, 'en la'],
           [/\benel\b/g, 'en el'],
+          [/\bconla\b/g, 'con la'],
+          [/\bconel\b/g, 'con el'],
+          [/\bporla\b/g, 'por la'],
+          [/\bporel\b/g, 'por el'],
+          [/\bSimi\b/g, 'Si mi'],
+          [/\bmeha\b/gi, 'me ha'],
+          [/\bmehe\b/gi, 'me he'],
+          [/\bseha\b/gi, 'se ha'],
+          [/\bnohe\b/gi, 'no he'],
           [/\bporque\s*que\b/g, 'porque'],
           [/\bque que\b/g, 'que'],
+          [/\bhey\b(?=[,. ])/g, 'he'],
+          [/\bvolveria\b/g, 'volvería'],
+          [/\bseria\b/g, 'sería'],
+          [/\bpodria\b/g, 'podría'],
+          [/\btendria\b/g, 'tendría'],
+          [/\bharia\b/g, 'haría'],
+          [/\bqueria\b/g, 'quería'],
+          [/\bdeberia\b/g, 'debería'],
         ];
         for (const [pattern, replacement] of spanishFixes) {
           formattedText = formattedText.replace(pattern, replacement);
