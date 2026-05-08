@@ -1,55 +1,94 @@
-// offscreen.js
 let cachedWorker = null;
 let currentLang = null;
+let currentMode = null;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.evt === 'performLocalOCR') {
     (async () => {
       try {
-        const lang = message.ocrLang || 'spa';
+        let lang = message.ocrLang || 'spa';
+        // Añadir siempre inglés como modelo secundario para perfeccionar lectura de '@', números y usernames
+        if (lang !== 'eng') {
+           lang = lang + '+eng';
+        }
+        const isBestMode = !!message.bestMode;
         
-        if (!cachedWorker || currentLang !== lang) {
+        if (!cachedWorker || currentLang !== lang || currentMode !== isBestMode) {
           if (cachedWorker) {
             await cachedWorker.terminate();
           }
           
-          console.log('Offscreen: Creando worker para:', lang);
-          // Usamos rutas absolutas y DESACTIVAMOS el blob para evitar problemas de origen en Opera
+          console.log(`Offscreen: Creando worker para: ${lang} (Mode: ${isBestMode ? 'Best' : 'Fast'})`);
+          
+          const langPathDir = isBestMode ? 'OCR/tessdata_best/' : 'OCR/tessdata/';
+
           cachedWorker = await Tesseract.createWorker(lang, 1, {
             workerPath: chrome.runtime.getURL('OCR/scripts/worker.min.js'),
             corePath: chrome.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
-            langPath: chrome.runtime.getURL('OCR/tessdata/'),
-            workerBlobURL: false, // CLAVE: Evita que se cree un blob: origin que Opera bloquea
+            langPath: chrome.runtime.getURL(langPathDir),
+            workerBlobURL: false,
             cacheMethod: 'none',
             gzip: true
           });
           currentLang = lang;
+          currentMode = isBestMode;
         }
 
         // Preprocesar la imagen para mejorar enormemente la precisión del OCR
-        const preprocessed = await new Promise((resolve) => {
+        const preprocessed = await new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const scale = 2; // Escalar 2x mejora la lectura de textos pequeños
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
-            const ctx = canvas.getContext('2d');
-            
-            // Filtro de escala de grises y aumento de contraste (binarización simple)
-            ctx.filter = 'grayscale(100%) contrast(150%)';
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            
-            resolve({
-              dataUrl: canvas.toDataURL('image/jpeg', 1.0),
-              scale: scale
-            });
+            try {
+              const canvas = document.createElement('canvas');
+              const scale = 3; // Escalar 3x para ultra alta resolución
+              canvas.width = img.width * scale;
+              canvas.height = img.height * scale;
+              const ctx = canvas.getContext('2d');
+              
+              // Habilitar suavizado de alta calidad para preservar las curvas de la arroba '@'
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              
+              // 1. Dibujar la imagen original para analizar su brillo
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              let data = imgData.data;
+              let colorSum = 0;
+              // Muestrear píxeles para calcular el brillo promedio
+              for(let x = 0, len = data.length; x < len; x+=16) {
+                  colorSum += (data[x] + data[x+1] + data[x+2]) / 3;
+              }
+              let brightness = Math.floor(colorSum / (data.length / 16));
+              
+              // 2. Si es Dark Mode (brillo < 127), aplicar INVERTIR
+              let invertFilter = brightness < 127 ? ' invert(100%)' : '';
+              
+              // 3. Limpiar y redibujar con escala de grises. 
+              // Quitamos el contrast(150%) porque destruye el anti-aliasing y rompe las líneas finas del @
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.filter = 'grayscale(100%)' + invertFilter;
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              
+              resolve({
+                dataUrl: canvas.toDataURL('image/jpeg', 1.0),
+                scale: scale
+              });
+            } catch (e) {
+              reject(new Error('Error al procesar la imagen en canvas: ' + e.message));
+            }
           };
+          img.onerror = () => reject(new Error('Error al cargar la imagen para preprocesamiento.'));
           img.src = message.imagepath;
         });
 
         console.log('Offscreen: Procesando OCR...');
-        const { data } = await cachedWorker.recognize(preprocessed.dataUrl);
+        
+        // Timeout de seguridad de 30 segundos
+        const recognizePromise = cachedWorker.recognize(preprocessed.dataUrl);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('El motor OCR tardó demasiado (Timeout)')), 30000));
+        
+        const { data } = await Promise.race([recognizePromise, timeoutPromise]);
+        
         const scale = preprocessed.scale;
         
         const lines = (data.lines || []).map(line => {

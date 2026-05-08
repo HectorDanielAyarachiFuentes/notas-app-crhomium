@@ -60,7 +60,7 @@ if (typeof browser === "undefined") {
 
 	var _searchOCRLanguageList = function (lang) {
 		var result = '';
-		if (OPTIONS.ocrEngine == "OcrLocal") {
+		if (OPTIONS.ocrEngine == "OcrLocal" || OPTIONS.ocrEngine == "OcrLocalBest") {
 			$.each(APPCONFIG.ocr_languages, function (i, v) {
 				if (v.lang === lang) {
 					result = v;
@@ -161,7 +161,8 @@ if (typeof browser === "undefined") {
 			{ value: 'OcrSpace',       label: 'Motor OCR 1' },
 			{ value: 'OcrSpaceSecond', label: 'Motor OCR 2' },
 			{ value: 'OcrSpaceThird',  label: 'Motor OCR 3' },
-			{ value: 'OcrLocal',       label: 'OCR Local' }
+			{ value: 'OcrLocal',       label: 'OCR Local (Fast)' },
+			{ value: 'OcrLocalBest',   label: 'OCR Local (Best)' }
 		];
 
 		var _getEngineLabel = function(value) {
@@ -1101,12 +1102,13 @@ return false;
 					//check Ocr Engine
 					if (OcrEngine === "OcrSpace") {
 						_postToOCR($ocr, ocrPostData, 0);
-					}else if (OcrEngine === "OcrLocal") {
+					}else if (OcrEngine === "OcrLocal" || OcrEngine === "OcrLocalBest") {
 						var ocrLang =   OPTIONS.visualCopyOCRLang;
 						browser.runtime.sendMessage({
 							evt: 'captureScreenLocalOcr',
 							ocrLang:ocrLang,
-							imagepath:dataURI
+							imagepath:dataURI,
+							bestMode: OcrEngine === "OcrLocalBest"
 						}, function (data) {
 							if (browser.runtime.lastError) {
 								$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: browser.runtime.lastError.message });
@@ -1142,12 +1144,13 @@ return false;
 					if (OcrEngine === "OcrSpace") {
 						_postToOCR($ocr, ocrPostData, 0);
 
-					} else if (OcrEngine === "OcrLocal") {
+					} else if (OcrEngine === "OcrLocal" || OcrEngine === "OcrLocalBest") {
 						var ocrLang =   OPTIONS.visualCopyOCRLang;
 						browser.runtime.sendMessage({
 							evt: 'captureScreenLocalOcr',
 							ocrLang:ocrLang,
-							imagepath:dataURI
+							imagepath:dataURI,
+							bestMode: OcrEngine === "OcrLocalBest"
 						}, function (data) {
 							if (browser.runtime.lastError) {
 								$ocr.reject({ type: 'OCR', stat: 'OCR Local error', message: browser.runtime.lastError.message });

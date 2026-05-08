@@ -68,6 +68,7 @@
         "OCR/scripts/tesseract-core-simd.wasm.js",
         "OCR/scripts/tesseract-core-simd.wasm",
         "OCR/tessdata/*",
+        "OCR/tessdata_best/*",
         "OCR/images/*"
       ],
       "matches": ["<all_urls>"]

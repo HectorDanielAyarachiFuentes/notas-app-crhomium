@@ -120,7 +120,8 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const response = await chrome.runtime.sendMessage({
           evt: 'performLocalOCR',
           ocrLang: message.ocrLang,
-          imagepath: message.imagepath
+          imagepath: message.imagepath,
+          bestMode: message.bestMode
         });
         sendResponse(response);
       } catch (e) {
