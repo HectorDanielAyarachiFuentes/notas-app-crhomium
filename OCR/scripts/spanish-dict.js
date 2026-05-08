@@ -15040,6 +15040,15 @@ function isSpanishWord(word) {
 
 // Intenta dividir una palabra fusionada en 2 palabras válidas del diccionario
 // "Simi" → "Si mi", "enlo" → "en lo", "mehe" → "me he"
+function preserveCasing(originalWord, newWord) {
+  if (!originalWord) return newWord;
+  const isAllCaps = originalWord === originalWord.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(originalWord);
+  if (isAllCaps) return newWord.toUpperCase();
+  const isTitleCase = originalWord[0] === originalWord[0].toUpperCase();
+  if (isTitleCase) return newWord.charAt(0).toUpperCase() + newWord.slice(1);
+  return newWord;
+}
+
 function trySplitMergedWord(word) {
   if (!word || word.length < 3) return null;
   const lower = word.toLowerCase();
@@ -15048,9 +15057,7 @@ function trySplitMergedWord(word) {
     const left = lower.substring(0, i);
     const right = lower.substring(i);
     if (isSpanishWord(left) && isSpanishWord(right)) {
-      // Preservar mayúscula original del inicio
-      const resultLeft = word[0] === word[0].toUpperCase() ? left.charAt(0).toUpperCase() + left.slice(1) : left;
-      return resultLeft + ' ' + right;
+      return preserveCasing(word.substring(0, i), left) + ' ' + preserveCasing(word.substring(i), right);
     }
   }
 
@@ -15061,8 +15068,7 @@ function trySplitMergedWord(word) {
       const left = lower.substring(0, i);
       const right = lower.substring(j);
       if (isSpanishWord(left) && isSpanishWord(right)) {
-        const resultLeft = word[0] === word[0].toUpperCase() ? left.charAt(0).toUpperCase() + left.slice(1) : left;
-        return resultLeft + ' ' + right;
+        return preserveCasing(word.substring(0, i), left) + ' ' + preserveCasing(word.substring(j), right);
       }
     }
   }
@@ -15105,8 +15111,7 @@ function autoCorrectOCRWord(word) {
     // Para palabras muy largas (>= 8 chars), toleramos hasta 2 errores
     const maxErrors = lower.length >= 8 ? 2 : 1;
     if (dist > 0 && dist <= maxErrors) {
-      // Devolver manteniendo la capitalización original si la tenía
-      return word[0] === word[0].toUpperCase() ? dictWord.charAt(0).toUpperCase() + dictWord.slice(1) : dictWord;
+      return preserveCasing(word, dictWord);
     }
   }
   return null;
