@@ -12,7 +12,7 @@
                     ((typeof browser !== 'undefined' && browser.runtime && browser.runtime.sendMessage) ? browser : null);
 
         if (!api) {
-            console.warn('Notas Pro: No se pudo encontrar el API de la extensión. Por favor, RECARGA LA EXTENSIÓN en opera://extensions y luego REFRESCA esta pestaña.');
+            console.log('Notas Pro: No se pudo encontrar el API de la extensión. Por favor, REFRESCA esta pestaña.');
             return;
         }
 

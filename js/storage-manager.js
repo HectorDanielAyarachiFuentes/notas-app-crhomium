@@ -49,7 +49,7 @@ export async function getNotes() {
       const driveNotes = await downloadNotesFromDrive();
       return driveNotes ?? [];
     } catch (err) {
-      console.warn('[StorageManager] Drive no disponible, usando caché local:', err.message);
+      console.log('[StorageManager] Drive no disponible, usando caché local:', err.message);
       // Fallback a local si Drive falla (p.ej. sin internet)
       const { [NOTES_LOCAL_KEY]: notes = [] } = await browserAPI.storage.local.get({ [NOTES_LOCAL_KEY]: [] });
       return notes;
@@ -76,7 +76,7 @@ export async function saveNotes(notes) {
     try {
       await uploadNotesToDrive(notes);
     } catch (err) {
-      console.warn('[StorageManager] No se pudo subir a Drive:', err.message);
+      console.log('[StorageManager] No se pudo subir a Drive:', err.message);
       throw err; // Propagar para que el UI pueda mostrar el error
     }
   }
@@ -117,7 +117,7 @@ export async function mergeLocalWithDrive() {
   try {
     await uploadNotesToDrive(merged);
   } catch (err) {
-    console.warn('[StorageManager] No se pudo subir el resultado de la fusión a Drive:', err.message);
+    console.log('[StorageManager] No se pudo subir el resultado de la fusión a Drive:', err.message);
     // No lanzamos error aquí porque ya guardamos en local y la fusión se completó.
     // El usuario verá sus notas actualizadas en local.
   }
