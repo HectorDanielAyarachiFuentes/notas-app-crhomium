@@ -110,28 +110,131 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('El motor OCR tardó demasiado (Timeout)')), 30000));
         
         const { data } = await Promise.race([recognizePromise, timeoutPromise]);
-        
+
         const scale = preprocessed.scale;
-        
-        const lines = (data.lines || []).map(line => {
+        const rawLines = data.lines || [];
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Post-procesamiento avanzado: formateo armónico del texto
+        // ══════════════════════════════════════════════════════════════════════
+
+        // ── Paso 1: Fusionar líneas en la misma posición Y ──────────────────
+        // Tesseract a veces parte una línea visual en dos si hay emojis/iconos
+        const mergedLines = [];
+        for (const line of rawLines) {
+          if (!line.bbox) { mergedLines.push(line); continue; }
+          const midY = (line.bbox.y0 + line.bbox.y1) / 2;
+          const lastMerged = mergedLines[mergedLines.length - 1];
+          if (lastMerged && lastMerged.bbox) {
+            const lastMidY = (lastMerged.bbox.y0 + lastMerged.bbox.y1) / 2;
+            const lastH = lastMerged.bbox.y1 - lastMerged.bbox.y0;
+            // Si el centro Y está dentro del 40% de la altura de la línea anterior → misma línea
+            if (Math.abs(midY - lastMidY) < lastH * 0.4) {
+              lastMerged.text = (lastMerged.text || '') + ' ' + (line.text || '');
+              lastMerged.words = (lastMerged.words || []).concat(line.words || []);
+              lastMerged.bbox.x1 = Math.max(lastMerged.bbox.x1, line.bbox.x1);
+              lastMerged.bbox.y0 = Math.min(lastMerged.bbox.y0, line.bbox.y0);
+              lastMerged.bbox.y1 = Math.max(lastMerged.bbox.y1, line.bbox.y1);
+              continue;
+            }
+          }
+          // Clonar para no mutar data original
+          mergedLines.push({
+            text: line.text,
+            words: [...(line.words || [])],
+            bbox: { ...line.bbox },
+            confidence: line.confidence
+          });
+        }
+
+        // ── Paso 2: Reconstruir texto de cada línea usando confianza por palabra ─
+        for (const line of mergedLines) {
+          if (!line.words || !line.words.length) continue;
+
+          const cleanWords = [];
+          for (const word of line.words) {
+            const conf = word.confidence || 0;
+            const text = (word.text || '').trim();
+            if (!text) continue;
+
+            // Eliminar palabras de 1-2 chars con confianza muy baja (ruido)
+            if (text.length <= 2 && conf < 35) continue;
+
+            // Eliminar tokens que son puro ruido visual (|, _, ~, etc.)
+            if (/^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
+
+            cleanWords.push(text);
+          }
+          line.text = cleanWords.join(' ');
+        }
+
+        // ── Paso 3: Calcular altura promedio para detección de párrafos ──────
+        let totalLineHeight = 0, validLineCount = 0;
+        for (const line of mergedLines) {
+          if (line.bbox) {
+            totalLineHeight += (line.bbox.y1 - line.bbox.y0);
+            validLineCount++;
+          }
+        }
+        const avgLineHeight = validLineCount > 0 ? totalLineHeight / validLineCount : 40;
+        const PARAGRAPH_GAP = avgLineHeight * 0.8;
+
+        // ── Paso 4: Ensamblar con párrafos, limpieza final por línea ─────────
+        const formattedLines = [];
+        for (let i = 0; i < mergedLines.length; i++) {
+          const line = mergedLines[i];
+          let text = (line.text || '').trimEnd();
+
+          // 4a. Limpiar artefactos al inicio de línea (chars sueltos por ruido)
+          text = text.replace(/^["""''`´]\s+/, '');
+          // Char suelto al inicio solo si NO forma parte de una palabra
+          text = text.replace(/^([a-z])\s+(?=[A-Z@#\d])/, '');
+
+          // 4b. Limpiar artefactos al final de línea
+          text = text.replace(/\s+[Vv]{1,2}$/, '');    // "Vv" al final → flecha ↓ mal leída
+          text = text.replace(/\s+[|\\\/]$/, '');       // Barras sueltas al final
+
+          // 4c. Normalizar espacios
+          text = text.replace(/  +/g, ' ').trim();
+
+          // 4d. Correcciones comunes de Tesseract
+          text = text.replace(/\bQ\b(?=\s+\w)/g, '👎'); // Q sola antes de texto → 👎
+          text = text.replace(/\bl\b(?=\s+\d)/g, '↳');  // l sola antes de número → bullet
+
+          // 4e. Ignorar líneas vacías o con un solo char sin sentido
+          if (text.length <= 1 && !/[\d@#]/.test(text)) continue;
+
+          // 4f. Detectar gap vertical grande → insertar línea en blanco (párrafo)
+          if (i > 0 && mergedLines[i - 1].bbox && line.bbox) {
+            const gap = line.bbox.y0 - mergedLines[i - 1].bbox.y1;
+            if (gap > PARAGRAPH_GAP) {
+              formattedLines.push('');
+            }
+          }
+
+          formattedLines.push(text);
+        }
+
+        // ── Paso 5: Limpieza final global ────────────────────────────────────
+        let formattedText = formattedLines.join('\n').trim();
+        // Colapsar 3+ saltos de línea consecutivos a máximo 2 (un párrafo)
+        formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
+
+        // ══════════════════════════════════════════════════════════════════════
+
+        const lines = rawLines.map(line => {
           let maxHeight = line.bbox ? ((line.bbox.y1 - line.bbox.y0) / scale) : 0;
           let minTop = line.bbox ? (line.bbox.y0 / scale) : 0;
-          
-          const words = (line.words || []).map(word => {
-            return {
-              WordText: word.text,
-              Left: word.bbox ? (word.bbox.x0 / scale) : 0,
-              Top: word.bbox ? (word.bbox.y0 / scale) : 0,
-              Width: word.bbox ? ((word.bbox.x1 - word.bbox.x0) / scale) : 0,
-              Height: word.bbox ? ((word.bbox.y1 - word.bbox.y0) / scale) : 0
-            };
-          });
 
-          return {
-            MaxHeight: maxHeight,
-            MinTop: minTop,
-            Words: words
-          };
+          const words = (line.words || []).map(word => ({
+            WordText: word.text,
+            Left:   word.bbox ? (word.bbox.x0 / scale) : 0,
+            Top:    word.bbox ? (word.bbox.y0 / scale) : 0,
+            Width:  word.bbox ? ((word.bbox.x1 - word.bbox.x0) / scale) : 0,
+            Height: word.bbox ? ((word.bbox.y1 - word.bbox.y0) / scale) : 0
+          }));
+
+          return { MaxHeight: maxHeight, MinTop: minTop, Words: words };
         });
 
         const textOverlay = {
@@ -139,13 +242,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           Message: "Total lines: " + lines.length,
           Lines: lines
         };
-        
-        sendResponse({ 
-          result: { 
-            ParsedResults: [{ ParsedText: data.text, TextOverlay: textOverlay }],
+
+        sendResponse({
+          result: {
+            ParsedResults: [{ ParsedText: formattedText, TextOverlay: textOverlay }],
             IsErroredOnProcessing: false,
             OCRExitCode: 1
-          } 
+          }
         });
       } catch (e) {
         console.error('Error en Offscreen OCR:', e);
