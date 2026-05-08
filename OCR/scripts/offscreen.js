@@ -285,46 +285,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
             }
+            // ── Intentar fusionar palabras cortadas por Tesseract ──
+            // Ej: "fue te" (fuerte), "vi al" (viral), "cien os" (cientos)
+            if (w + 1 < line.words.length) {
+              const nw = line.words[w + 1];
+              // Verificar físicamente si el espacio entre cajas es muy pequeño
+              // Un espacio real suele ser > 25% del alto de la letra.
+              // Si el gap es muy pequeño, Tesseract partió la palabra o se comió una letra fina.
+              const height = word.bbox.y1 - word.bbox.y0;
+              const gap = nw.bbox.x0 - word.bbox.x1;
+              const gapRatio = gap / height;
 
-            // ── Validación por diccionario ──
+              if (gapRatio < 0.25) { // Solo fusionar si están físicamente muy cerca
+                const nextText = (nw.text || '').trim().replace(/^[''`´"""\u201c\u201d]+/, '').replace(/[''`´"""\u201c\u201d]+$/, '');
+                if (nextText) {
+                  const combined = text + nextText;
+                  let mergedValid = null;
+                  if (isSpanishWord(combined)) {
+                    mergedValid = combined;
+                  } else {
+                    const corrected = autoCorrectOCRWord(combined);
+                    if (corrected) mergedValid = corrected;
+                  }
+                  
+                  if (mergedValid) {
+                    cleanWords.push(mergedValid);
+                    w++; // saltar nextText
+                    continue;
+                  }
+                }
+              }
+            }
+
+            // ── Validación por diccionario y Confianza ──
             const isValid = isSpanishWord(text);
 
             if (conf >= 80) {
-              // Alta confianza: aceptar, pero intentar corregir si no es palabra válida
-              if (!isValid && text.length >= 4) {
-                const split = trySplitMergedWord(text);
-                if (split) { cleanWords.push(split); continue; }
-                const corrected = autoCorrectOCRWord(text);
-                if (corrected) { cleanWords.push(corrected); continue; }
-              }
+              // Confianza alta: Confiamos 100% en Tesseract.
+              // Nuestro diccionario es pequeño, así que no debemos destruir palabras
+              // perfectamente leídas (ej: "Desapareció", "encontraron") solo porque no estén en él.
               cleanWords.push(text);
             } else if (conf >= 50) {
-              // Confianza media: aceptar si es palabra válida o es larga
+              // Confianza media
               if (isValid) {
                 cleanWords.push(text);
-              } else if (text.length >= 4) {
+              } else if (text.length >= 4 && /[aeiouáéíóú]/i.test(text) && !/[0-9]/.test(text)) {
+                // Si parece una palabra normal (tiene vocales, longitud razonable, sin números),
+                // asumimos que es una palabra válida que no está en nuestro diccionario.
+                cleanWords.push(text);
+              } else {
+                // Si parece basura (no tiene vocales, es corta, o tiene números raros), intentamos rescatarla
                 const split = trySplitMergedWord(text);
                 if (split) { cleanWords.push(split); continue; }
                 const corrected = autoCorrectOCRWord(text);
                 if (corrected) { cleanWords.push(corrected); continue; }
-                // Mantener si tiene vocales (probablemente es palabra real no en diccionario)
+                
+                // Si todo falla, pero al menos tiene vocales, la mantenemos por las dudas
                 if (/[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
               }
-              // Si es corta y no válida → descartar
             } else {
-              // Baja confianza (<50%): solo aceptar si está en diccionario
+              // Baja confianza (<50%): Tesseract está adivinando
               if (isValid) {
                 cleanWords.push(text);
-              } else if (text.length >= 4) {
-                // Si la confianza es muy baja, la fuzzy correction es nuestra salvación
+              } else {
+                // Aquí el diccionario y corrector son obligatorios para rescatar la palabra
                 const corrected = autoCorrectOCRWord(text);
                 if (corrected) { cleanWords.push(corrected); continue; }
                 const split = trySplitMergedWord(text);
                 if (split) { cleanWords.push(split); continue; }
-                // Solo mantener si es larga y tiene vocales (posible palabra fuera de dicc)
+                
+                // Solo mantener si es larga y tiene vocales (último recurso)
                 if (text.length >= 5 && /[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
               }
-              // Si no está en diccionario, no se puede corregir y es corta → basura, descartar
             }
           }
           line.text = cleanWords.join(' ');

@@ -122,9 +122,10 @@ const SPANISH_COMMON = new Set([
   'jaja','jajaja','lol','like','xd','wtf','omg',
   'nadie','nada','algo','alguien','todo','siempre','nunca',
   're','muy','tan','súper','super','mega','ultra',
-  'convertido','convertida','volvería','viera','dejar',
   'perro','gato','perrito','gatito','mascota','dormir','contigo',
-  'visita','acostumbrado','acostumbrada',
+  'visita','acostumbrado','acostumbrada','fuerte','teoría','teoria',
+  'viral','mujer','mujeres','hombre','hombres','engañó','engaño',
+  'ciento','cientos','cliente','clientes','pasar','hermano','sister','murió',
 ]);
 
 // Función para verificar si una palabra está en el diccionario (case-insensitive)
