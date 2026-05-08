@@ -53,6 +53,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               let data = imgData.data;
 
+              // Guardar copia de colores originales para detección de emojis por color
+              const origColors = new Uint8Array(data.length);
+              origColors.set(data);
+
               // 2. Convertir a grises con luminancia perceptual y buscar min/max
               //    (naranja RGB(255,165,0) → ~173; negro → 0; blanco → 255)
               let minGray = 255, maxGray = 0;
@@ -85,7 +89,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
 
               ctx.putImageData(imgData, 0, 0);
-              resolve({ dataUrl: canvas.toDataURL('image/png'), scale: scale });
+              resolve({ dataUrl: canvas.toDataURL('image/png'), scale: scale, origColors: origColors, imgWidth: canvas.width, imgHeight: canvas.height });
             } catch (e) {
               reject(new Error('Error al procesar imagen: ' + e.message));
             }
@@ -254,13 +258,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
-              // ── Fallback genérico: emoji no reconocido ──
-              // Si confianza MUY baja (<25%), token corto (1-3 chars),
-              // y NO parece texto/puntuación normal → marcar como emoji
-              if (conf < 25 && text.length <= 3 && !/^[a-zA-ZáéíóúñÑ0-9.,;:!?¿¡]+$/.test(text)) {
-                cleanWords.push('❔');
-                continue;
-              }
 
               // Si es 1-2 chars con confianza < 35, es ruido → eliminar
               if (text.length <= 2 && conf < 35) continue;
@@ -348,6 +345,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let formattedText = formattedLines.join('\n').trim();
         // Colapsar 3+ saltos de línea consecutivos a máximo 2 (un párrafo)
         formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
+
+        // ── Paso 6: Fallback — detección de emojis por color ─────────────────
+        // Si Tesseract devolvió texto vacío o muy corto, escanear la imagen
+        // original buscando clusters de píxeles amarillos (emojis tipo cara).
+        if (formattedText.replace(/\s/g, '').length <= 2) {
+          try {
+            const oc = preprocessed.origColors;
+            const cw = preprocessed.imgWidth;
+            const ch = preprocessed.imgHeight;
+            if (oc && cw && ch) {
+              // Buscar píxeles "amarillo/naranja" (cara de emoji)
+              // HSL: Hue 20-65°, Saturation > 35%, Lightness 35-90%
+              let emojiPixelCount = 0;
+              let minX = cw, maxX = 0, minY = ch, maxY = 0;
+              for (let y = 0; y < ch; y++) {
+                for (let x = 0; x < cw; x++) {
+                  const i = (y * cw + x) * 4;
+                  const r = oc[i], g = oc[i+1], b = oc[i+2];
+                  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+                  const l = (max + min) / 2 / 255;
+                  const d = max - min;
+                  if (d === 0 || l < 0.35 || l > 0.90) continue;
+                  const s = d / (1 - Math.abs(2 * l - 1)) / 255;
+                  if (s < 0.35) continue;
+                  let hue = 0;
+                  if (max === r) hue = 60 * (((g - b) / d) % 6);
+                  else if (max === g) hue = 60 * ((b - r) / d + 2);
+                  else hue = 60 * ((r - g) / d + 4);
+                  if (hue < 0) hue += 360;
+                  // Amarillo/naranja/dorado: 20° - 65°
+                  if (hue >= 20 && hue <= 65) {
+                    emojiPixelCount++;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                  }
+                }
+              }
+
+              // Si hay suficientes píxeles amarillos (>2% de la imagen)
+              if (emojiPixelCount > (cw * ch) * 0.02) {
+                const emojiSize = Math.max((maxY - minY) || 1, 10);
+                const totalWidth = maxX - minX;
+                const emojiCount = Math.max(1, Math.round(totalWidth / emojiSize));
+                formattedText = '😂'.repeat(Math.min(emojiCount, 20));
+              }
+            }
+          } catch(e) {
+            console.warn('Offscreen: Emoji color detection failed:', e);
+          }
+        }
 
         // ══════════════════════════════════════════════════════════════════════
 
