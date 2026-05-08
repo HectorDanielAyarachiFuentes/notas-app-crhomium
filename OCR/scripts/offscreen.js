@@ -79,15 +79,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // Modo saturación: el texto tiene color fuerte (amarillo/blanco/rojo)
                 // → Convertir píxeles saturados+brillantes a negro, resto a blanco
                 // NOTA: NO usar lum>210 porque convierte fondo claro en negro y pierde líneas
+                let brightnessSum = 0;
                 for (let i = 0; i < data.length; i += 4) {
                   const r = data[i], g = data[i+1], b = data[i+2];
                   const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
                   const sat = mx === 0 ? 0 : (mx - mn) / mx;
                   // Solo píxeles con saturación real → texto coloreado → negro
+                  let v = 255;
                   if (sat > 0.3 && mx > 130) {
-                    data[i] = data[i+1] = data[i+2] = 0;
-                  } else {
-                    data[i] = data[i+1] = data[i+2] = 255;
+                    v = 0;
+                  }
+                  data[i] = data[i+1] = data[i+2] = v;
+                  brightnessSum += v;
+                }
+                // Si la imagen resultante es mayormente negra (el fondo era saturado),
+                // la invertimos para que el texto sea negro sobre fondo blanco.
+                const avgBrightness = brightnessSum / totalPixels;
+                if (avgBrightness < 127) {
+                  for (let i = 0; i < data.length; i += 4) {
+                    data[i] = data[i+1] = data[i+2] = 255 - data[i];
                   }
                 }
               } else {
