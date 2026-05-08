@@ -1,13 +1,17 @@
 /* Consolidated OCR Master Stylesheet */
 
-/* Reset Styles */
-html, body, div, span, applet, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code, del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var, b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary, time, mark, audio, video { margin: 0; padding: 0; border: 0; font-size: 100%; font: inherit; vertical-align: baseline; }
-article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section { display: block; }
-body { line-height: 1; }
-ol, ul { list-style: none; }
-blockquote, q { quotes: none; }
-blockquote:before, blockquote:after, q:before, q:after { content: ''; content: none; }
-table { border-collapse: collapse; border-spacing: 0; }
+/* Reset Styles encapsulado para evitar romper la página web anfitriona */
+:where(.ocrext-wrapper) *,
+:where(.ocrext-wrapper) *::before,
+:where(.ocrext-wrapper) *::after {
+    margin: 0; padding: 0; border: 0; font-size: 100%; font: inherit; vertical-align: baseline; box-sizing: border-box;
+}
+:where(.ocrext-wrapper) article, :where(.ocrext-wrapper) aside, :where(.ocrext-wrapper) details, :where(.ocrext-wrapper) figcaption, :where(.ocrext-wrapper) figure, :where(.ocrext-wrapper) footer, :where(.ocrext-wrapper) header, :where(.ocrext-wrapper) hgroup, :where(.ocrext-wrapper) menu, :where(.ocrext-wrapper) nav, :where(.ocrext-wrapper) section { display: block; }
+:where(.ocrext-wrapper) { line-height: 1; }
+:where(.ocrext-wrapper) ol, :where(.ocrext-wrapper) ul { list-style: none; }
+:where(.ocrext-wrapper) blockquote, :where(.ocrext-wrapper) q { quotes: none; }
+:where(.ocrext-wrapper) blockquote:before, :where(.ocrext-wrapper) blockquote:after, :where(.ocrext-wrapper) q:before, :where(.ocrext-wrapper) q:after { content: ''; content: none; }
+:where(.ocrext-wrapper) table { border-collapse: collapse; border-spacing: 0; }
 
 :root {
   /* Premium Arctic Frost Palette (from Notas Pro) */
