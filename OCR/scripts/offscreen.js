@@ -149,35 +149,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // ── Paso 2: Diccionario de emojis mal leídos por Tesseract ─────────
         // Solo se aplica cuando la confianza de la palabra es baja (< 50%)
-        // para evitar falsos positivos con texto real.
         const EMOJI_MISREADS = {
-          // Thumbs / reacciones — muchas variantes por dark/light mode
+          // ── Thumbs / reacciones ──
           'Q':  '👎', 'qb': '👎', 'Qb': '👎', 'Y': '👎', 'y': '👎',
+          'qd': '👎', 'Qd': '👎', 'Ql': '👎',
           'db': '👍', 'dh': '👍', 'dD': '👍', '(de': '👍', 'de': '👍',
           'cb': '👍', 'Cb': '👍', 'Gb': '👍', 'gb': '👍',
-          // Caras
-          'E8': '😎', 'e8': '😎', 'eB': '😎', 'E 8': '😎',
-          'eD': '😂', '8D': '😂', 'BD': '😂',
-          'O': '🤣', 'O)': '🤣', 'O}': '🤣', 'oO': '🤣', '00': '🤣', 'OO': '🤣', 'Oo': '🤣',
-          'e>': '😭', 'T_T': '😭', 'TT': '😭',
-          'eO': '😊', 'e0': '😊', 'eC': '😊',
-          ':D': '😁', ':)': '🙂', ':(': '😞', 'B)': '😎',
-          '<3': '❤️', 'c3': '❤️', 'C3': '❤️',
+          'dP': '👍', 'dp': '👍', 'th': '👍',
+
+          // ── Caras felices / risa ──
+          'E8': '😎', 'e8': '😎', 'eB': '😎', 'E 8': '😎', 'EB': '😎',
+          'eD': '😂', '8D': '😂', 'BD': '😂', 'bD': '😂',
+          'O': '🤣', 'O)': '🤣', 'O}': '🤣', 'oO': '🤣', 'OO': '🤣', 'Oo': '🤣',
+          'eP': '😋', 'ep': '😋',
+          ':D': '😁', ':)': '🙂', 'B)': '😎',
           'xD': '😆', 'XD': '😆', 'xd': '😆',
+          ';)': '😉', ';D': '😉',
+          'eO': '😊', 'e0': '😊', 'eC': '😊',
+          'e@': '😍', 'eé': '😍',
+
+          // ── Caras tristes / negativas ──
+          ':(': '😞', ':c': '😢', ':C': '😢',
+          'e>': '😭', 'T_T': '😭', 'TT': '😭',
           'D:': '😱', ':O': '😮', ':o': '😮',
           ':P': '😛', ':p': '😛', 'xP': '😜',
-          ';)': '😉',
-          // Fuego / estrellas / efectos
-          'JJ': '🎵', 'JT': '🎵', 'Jf': '🎶',
-          '@': '🔥',  // solo con baja confianza (emoji fuego, no arroba real)
-          // Flechas / símbolos
+          '>:(': '😡', 'eé': '😤',
+
+          // ── Corazones ──
+          '<3': '❤️', 'c3': '❤️', 'C3': '❤️', 'e3': '❤️',
+          'S2': '❤️', 's2': '❤️',
+
+          // ── Fuego / efectos ──
+          'JJ': '🎵', 'JT': '🎵', 'Jf': '🎶', 'Jj': '🎵',
+          '@': '🔥',  // solo con baja confianza
+
+          // ── Flechas / direcciones ──
           'Vv': '⬇️', 'VV': '⬇️', 'vv': '⬇️',
           'AV': '⬆️', 'Av': '⬆️', 'AA': '⬆️',
-          // Checks
+          '>>': '▶️', '<<': '◀️',
+
+          // ── Checks / cruces ──
           'V': '✔️', 'X': '❌',
-          // Manos
+
+          // ── Manos / gestos ──
           'ok': '👌', 'OK': '👌',
+          'v/': '✌️',
+
+          // ── Estrellas / items ──
+          '*': '⭐', '**': '🌟',
+          '#': '🔢',
+
+          // ── Misc social media ──
+          'RT': '🔁',  // retweet
+          'DM': '✉️',  // mensaje directo
         };
+
         // Variantes normalizadas (sin espacios) para matcheo rápido
         const EMOJI_KEYS_NOSPACE = {};
         for (const k of Object.keys(EMOJI_MISREADS)) {
@@ -213,7 +239,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 continue;
               }
 
-              // Multi-word emoji: combinar con la palabra siguiente para detectar "E" + "8"
+              // Multi-word emoji: combinar con la palabra siguiente
               if (w + 1 < line.words.length) {
                 const nextWord = line.words[w + 1];
                 const nextConf = nextWord.confidence || 0;
@@ -222,10 +248,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   const combined = text + nextText;
                   if (EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]) {
                     cleanWords.push(EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]);
-                    w++; // saltar la siguiente palabra ya consumida
+                    w++;
                     continue;
                   }
                 }
+              }
+
+              // ── Fallback genérico: emoji no reconocido ──
+              // Si confianza MUY baja (<25%), token corto (1-3 chars),
+              // y NO parece texto/puntuación normal → marcar como emoji
+              if (conf < 25 && text.length <= 3 && !/^[a-zA-ZáéíóúñÑ0-9.,;:!?¿¡]+$/.test(text)) {
+                cleanWords.push('❔');
+                continue;
               }
 
               // Si es 1-2 chars con confianza < 35, es ruido → eliminar
