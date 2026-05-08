@@ -26,20 +26,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           currentLang = lang;
         }
 
-        console.log('Offscreen: Procesando...');
-        const { data } = await cachedWorker.recognize(message.imagepath);
+        // Preprocesar la imagen para mejorar enormemente la precisión del OCR
+        const preprocessed = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const scale = 2; // Escalar 2x mejora la lectura de textos pequeños
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            
+            // Filtro de escala de grises y aumento de contraste (binarización simple)
+            ctx.filter = 'grayscale(100%) contrast(150%)';
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            resolve({
+              dataUrl: canvas.toDataURL('image/jpeg', 1.0),
+              scale: scale
+            });
+          };
+          img.src = message.imagepath;
+        });
+
+        console.log('Offscreen: Procesando OCR...');
+        const { data } = await cachedWorker.recognize(preprocessed.dataUrl);
+        const scale = preprocessed.scale;
         
         const lines = (data.lines || []).map(line => {
-          let maxHeight = line.bbox ? (line.bbox.y1 - line.bbox.y0) : 0;
-          let minTop = line.bbox ? line.bbox.y0 : 0;
+          let maxHeight = line.bbox ? ((line.bbox.y1 - line.bbox.y0) / scale) : 0;
+          let minTop = line.bbox ? (line.bbox.y0 / scale) : 0;
           
           const words = (line.words || []).map(word => {
             return {
               WordText: word.text,
-              Left: word.bbox ? word.bbox.x0 : 0,
-              Top: word.bbox ? word.bbox.y0 : 0,
-              Width: word.bbox ? (word.bbox.x1 - word.bbox.x0) : 0,
-              Height: word.bbox ? (word.bbox.y1 - word.bbox.y0) : 0
+              Left: word.bbox ? (word.bbox.x0 / scale) : 0,
+              Top: word.bbox ? (word.bbox.y0 / scale) : 0,
+              Width: word.bbox ? ((word.bbox.x1 - word.bbox.x0) / scale) : 0,
+              Height: word.bbox ? ((word.bbox.y1 - word.bbox.y0) / scale) : 0
             };
           });
 
