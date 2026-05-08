@@ -62,68 +62,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const origColors = new Uint8Array(data.length);
               origColors.set(data);
 
-              // 2. Detectar si hay texto coloreado saturado (amarillo, naranja, etc.)
-              //    sobre fondo complejo (fotos, paisajes). En ese caso usar máscara
-              //    por saturación para aislar el texto del fondo.
-              let highSatCount = 0;
+              // 2. Preprocesamiento integral: Escala de grises + Normalización (Histogram Stretching)
+              // Esta solución unificada reemplaza los parches anteriores y garantiza una imagen
+              // óptima para el motor LSTM de Tesseract (texto negro sobre fondo blanco).
               const totalPixels = canvas.width * canvas.height;
+              let minGray = 255, maxGray = 0;
+              const grays = new Uint8Array(totalPixels);
+              let pi = 0;
+              
               for (let i = 0; i < data.length; i += 4) {
-                const r = data[i], g = data[i+1], b = data[i+2];
-                const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-                const sat = mx === 0 ? 0 : (mx - mn) / mx;
-                if (sat > 0.4 && mx > 120) highSatCount++;
+                // Luminancia estándar
+                let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+                grays[pi++] = g;
+                if (g < minGray) minGray = g;
+                if (g > maxGray) maxGray = g;
               }
-              const hasSaturatedText = highSatCount > totalPixels * 0.05;
-
-              if (hasSaturatedText) {
-                // Modo saturación: el texto tiene color fuerte (amarillo/blanco/rojo)
-                // → Convertir píxeles saturados+brillantes a negro, resto a blanco
-                // NOTA: NO usar lum>210 porque convierte fondo claro en negro y pierde líneas
-                let brightnessSum = 0;
+              
+              const range = maxGray - minGray || 1;
+              let brightnessSum = 0;
+              pi = 0;
+              
+              for (let i = 0; i < data.length; i += 4) {
+                let stretched = Math.round((grays[pi++] - minGray) / range * 255);
+                brightnessSum += stretched;
+                data[i] = data[i+1] = data[i+2] = stretched;
+              }
+              
+              // 3. Inversión inteligente: Tesseract requiere texto oscuro sobre fondo claro.
+              // Si el brillo promedio es bajo (fondo oscuro), invertimos los colores.
+              const avgBrightness = brightnessSum / totalPixels;
+              if (avgBrightness < 127) {
                 for (let i = 0; i < data.length; i += 4) {
-                  const r = data[i], g = data[i+1], b = data[i+2];
-                  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-                  const sat = mx === 0 ? 0 : (mx - mn) / mx;
-                  // Solo píxeles con saturación real → texto coloreado → negro
-                  let v = 255;
-                  if (sat > 0.3 && mx > 130) {
-                    v = 0;
-                  }
-                  data[i] = data[i+1] = data[i+2] = v;
-                  brightnessSum += v;
-                }
-                // Si la imagen resultante es mayormente negra (el fondo era saturado),
-                // la invertimos para que el texto sea negro sobre fondo blanco.
-                const avgBrightness = brightnessSum / totalPixels;
-                if (avgBrightness < 127) {
-                  for (let i = 0; i < data.length; i += 4) {
-                    data[i] = data[i+1] = data[i+2] = 255 - data[i];
-                  }
-                }
-              } else {
-                // Modo estándar: grises + histogram stretching
-                let minGray = 255, maxGray = 0;
-                const grays = new Uint8Array(totalPixels);
-                let pi = 0;
-                for (let i = 0; i < data.length; i += 4) {
-                  let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-                  grays[pi++] = g;
-                  if (g < minGray) minGray = g;
-                  if (g > maxGray) maxGray = g;
-                }
-                const range = maxGray - minGray || 1;
-                let brightnessSum = 0;
-                pi = 0;
-                for (let i = 0; i < data.length; i += 4) {
-                  let stretched = Math.round((grays[pi++] - minGray) / range * 255);
-                  brightnessSum += stretched;
-                  data[i] = data[i+1] = data[i+2] = stretched;
-                }
-                const avgBrightness = brightnessSum / totalPixels;
-                if (avgBrightness < 127) {
-                  for (let i = 0; i < data.length; i += 4) {
-                    data[i] = data[i+1] = data[i+2] = 255 - data[i];
-                  }
+                  data[i] = data[i+1] = data[i+2] = 255 - data[i];
                 }
               }
 
