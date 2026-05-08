@@ -147,25 +147,121 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
 
-        // ── Paso 2: Reconstruir texto de cada línea usando confianza por palabra ─
+        // ── Paso 2: Diccionario de emojis mal leídos por Tesseract ─────────
+        // Solo se aplica cuando la confianza de la palabra es baja (< 50%)
+        // para evitar falsos positivos con texto real.
+        const EMOJI_MISREADS = {
+          // Thumbs / reacciones — muchas variantes por dark/light mode
+          'Q':  '👎', 'qb': '👎', 'Qb': '👎', 'Y': '👎', 'y': '👎',
+          'db': '👍', 'dh': '👍', 'dD': '👍', '(de': '👍', 'de': '👍',
+          'cb': '👍', 'Cb': '👍', 'Gb': '👍', 'gb': '👍',
+          // Caras
+          'E8': '😎', 'e8': '😎', 'eB': '😎', 'E 8': '😎',
+          'eD': '😂', '8D': '😂', 'BD': '😂',
+          'O': '🤣', 'O)': '🤣', 'O}': '🤣', 'oO': '🤣', '00': '🤣', 'OO': '🤣', 'Oo': '🤣',
+          'e>': '😭', 'T_T': '😭', 'TT': '😭',
+          'eO': '😊', 'e0': '😊', 'eC': '😊',
+          ':D': '😁', ':)': '🙂', ':(': '😞', 'B)': '😎',
+          '<3': '❤️', 'c3': '❤️', 'C3': '❤️',
+          'xD': '😆', 'XD': '😆', 'xd': '😆',
+          'D:': '😱', ':O': '😮', ':o': '😮',
+          ':P': '😛', ':p': '😛', 'xP': '😜',
+          ';)': '😉',
+          // Fuego / estrellas / efectos
+          'JJ': '🎵', 'JT': '🎵', 'Jf': '🎶',
+          '@': '🔥',  // solo con baja confianza (emoji fuego, no arroba real)
+          // Flechas / símbolos
+          'Vv': '⬇️', 'VV': '⬇️', 'vv': '⬇️',
+          'AV': '⬆️', 'Av': '⬆️', 'AA': '⬆️',
+          // Checks
+          'V': '✔️', 'X': '❌',
+          // Manos
+          'ok': '👌', 'OK': '👌',
+        };
+        // Variantes normalizadas (sin espacios) para matcheo rápido
+        const EMOJI_KEYS_NOSPACE = {};
+        for (const k of Object.keys(EMOJI_MISREADS)) {
+          EMOJI_KEYS_NOSPACE[k.replace(/\s/g, '')] = EMOJI_MISREADS[k];
+        }
+
+        // ── Paso 3: Reconstruir texto usando confianza + emoji mapping ───────
         for (const line of mergedLines) {
           if (!line.words || !line.words.length) continue;
 
           const cleanWords = [];
-          for (const word of line.words) {
+          for (let w = 0; w < line.words.length; w++) {
+            const word = line.words[w];
             const conf = word.confidence || 0;
             const text = (word.text || '').trim();
             if (!text) continue;
 
-            // Eliminar palabras de 1-2 chars con confianza muy baja (ruido)
-            if (text.length <= 2 && conf < 35) continue;
-
             // Eliminar tokens que son puro ruido visual (|, _, ~, etc.)
             if (/^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
+
+            // Intentar mapear a emoji si confianza es baja
+            if (conf < 50) {
+              const noSpace = text.replace(/\s/g, '');
+
+              // Match directo
+              if (EMOJI_MISREADS[text]) {
+                cleanWords.push(EMOJI_MISREADS[text]);
+                continue;
+              }
+              // Match sin espacios (para "E 8" → "E8" → 😎)
+              if (EMOJI_KEYS_NOSPACE[noSpace]) {
+                cleanWords.push(EMOJI_KEYS_NOSPACE[noSpace]);
+                continue;
+              }
+
+              // Multi-word emoji: combinar con la palabra siguiente para detectar "E" + "8"
+              if (w + 1 < line.words.length) {
+                const nextWord = line.words[w + 1];
+                const nextConf = nextWord.confidence || 0;
+                const nextText = (nextWord.text || '').trim();
+                if (nextConf < 50) {
+                  const combined = text + nextText;
+                  if (EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]) {
+                    cleanWords.push(EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]);
+                    w++; // saltar la siguiente palabra ya consumida
+                    continue;
+                  }
+                }
+              }
+
+              // Si es 1-2 chars con confianza < 35, es ruido → eliminar
+              if (text.length <= 2 && conf < 35) continue;
+            }
 
             cleanWords.push(text);
           }
           line.text = cleanWords.join(' ');
+        }
+
+        // ── Paso 3b: Limpieza contextual de líneas de reacciones (YouTube) ──
+        // Detecta variantes de la línea "👍 N 👎 Responder" que YouTube muestra.
+        // Maneja: con/sin número, separadores (—, -, |), emojis ya reemplazados.
+        for (const line of mergedLines) {
+          const text = (line.text || '').trim();
+          if (!/Responder/i.test(text)) continue;
+
+          // Limpiar separadores que Tesseract lee del UI (—, -, |, etc.)
+          let cleaned = text.replace(/[—–\-|]/g, ' ').replace(/  +/g, ' ').trim();
+
+          // Extraer solo el número si hay uno
+          const numMatch = cleaned.match(/(\d+)/);
+          const count = numMatch ? numMatch[1] : '';
+
+          // Si la línea tiene "Responder" y es corta (típica de YouTube reactions)
+          // y tiene mayoritariamente tokens cortos/emojis → formatear
+          const parts = cleaned.split(/\s+/);
+          const responderIdx = parts.findIndex(p => /^Responder$/i.test(p));
+          if (responderIdx >= 0 && parts.length <= 6) {
+            // Contar cuántos tokens no-numéricos y no-"Responder" hay
+            const junk = parts.filter(p => !/^\d+$/.test(p) && !/^Responder$/i.test(p) && p.length <= 4);
+            if (junk.length >= 1) {
+              line.text = count ? '👍 ' + count + ' 👎 Responder' : '👍 👎 Responder';
+            }
+          }
         }
 
         // ── Paso 3: Calcular altura promedio para detección de párrafos ──────
@@ -197,8 +293,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // 4c. Normalizar espacios
           text = text.replace(/  +/g, ' ').trim();
 
-          // 4d. Correcciones comunes de Tesseract
-          text = text.replace(/\bQ\b(?=\s+\w)/g, '👎'); // Q sola antes de texto → 👎
+          // 4d. Correcciones de línea restantes
           text = text.replace(/\bl\b(?=\s+\d)/g, '↳');  // l sola antes de número → bullet
 
           // 4e. Ignorar líneas vacías o con un solo char sin sentido
