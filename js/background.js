@@ -246,6 +246,22 @@ async function handleBackgroundOCR(tab) {
     // Activar selección
     chrome.tabs.sendMessage(tab.id, { evt: 'enableselection' });
     
+    // TÁCTICA NINJA DE PRECARGA FANTASMA:
+    // Mientras el usuario arrastra el ratón para recortar (lo que toma 1-3 segundos),
+    // levantamos el offscreen document en segundo plano y pre-cargamos el worker OCR de Tesseract.
+    // Para cuando el usuario suelte el click, el OCR ya estará 100% listo en memoria.
+    setupOffscreenDocument().then(() => {
+      chrome.storage.sync.get(['visualCopyOCRLang', 'ocrEngine'], (opts) => {
+        const lang = opts.visualCopyOCRLang || 'spa';
+        const bestMode = opts.ocrEngine === 'OcrLocalBest';
+        chrome.runtime.sendMessage({ 
+          evt: 'preloadLocalOCR', 
+          ocrLang: lang,
+          bestMode: bestMode 
+        }).catch(() => {});
+      });
+    }).catch(e => console.warn("Error en precarga silenciosa:", e));
+
     // Seguridad: Resetear flag después de un tiempo razonable si algo falla
     setTimeout(() => { isProcessingOCR = false; }, 10000);
 

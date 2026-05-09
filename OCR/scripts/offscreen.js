@@ -1,38 +1,61 @@
 let cachedWorker = null;
 let currentLang = null;
 let currentMode = null;
+let workerCreationPromise = null;
+
+async function getOrCreateWorker(targetLang, isBestMode) {
+  let lang = targetLang || 'spa';
+  // Añadir siempre inglés como modelo secundario
+  if (lang !== 'eng') lang = lang + '+eng';
+
+  if (cachedWorker && currentLang === lang && currentMode === isBestMode) {
+    return cachedWorker;
+  }
+
+  // Si ya hay una creación en proceso, esperamos a que termine
+  if (workerCreationPromise) {
+    await workerCreationPromise;
+    if (cachedWorker && currentLang === lang && currentMode === isBestMode) {
+      return cachedWorker;
+    }
+  }
+
+  workerCreationPromise = (async () => {
+    if (cachedWorker) {
+      await cachedWorker.terminate();
+    }
+    
+    console.log(`Offscreen: Creando/Precargando worker para: ${lang} (Mode: ${isBestMode ? 'Best' : 'Fast'})`);
+    const langPathDir = isBestMode ? 'OCR/tessdata_best/' : 'OCR/tessdata/';
+
+    cachedWorker = await Tesseract.createWorker(lang, 1, {
+      workerPath: chrome.runtime.getURL('OCR/scripts/worker.min.js'),
+      corePath: chrome.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
+      langPath: chrome.runtime.getURL(langPathDir),
+      workerBlobURL: false,
+      cacheMethod: 'write', // Cambiado a 'write' para cachear en IndexedDB y acelerar arranques futuros
+      gzip: true
+    });
+    currentLang = lang;
+    currentMode = isBestMode;
+  })();
+
+  await workerCreationPromise;
+  workerCreationPromise = null;
+  return cachedWorker;
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.evt === 'preloadLocalOCR') {
+    getOrCreateWorker(message.ocrLang, message.bestMode).catch(e => console.warn('Offscreen: Precarga falló:', e));
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.evt === 'performLocalOCR') {
     (async () => {
       try {
-        let lang = message.ocrLang || 'spa';
-        // Añadir siempre inglés como modelo secundario para perfeccionar lectura de '@', números y usernames
-        if (lang !== 'eng') {
-           lang = lang + '+eng';
-        }
-        const isBestMode = !!message.bestMode;
-        
-        if (!cachedWorker || currentLang !== lang || currentMode !== isBestMode) {
-          if (cachedWorker) {
-            await cachedWorker.terminate();
-          }
-          
-          console.log(`Offscreen: Creando worker para: ${lang} (Mode: ${isBestMode ? 'Best' : 'Fast'})`);
-          
-          const langPathDir = isBestMode ? 'OCR/tessdata_best/' : 'OCR/tessdata/';
-
-          cachedWorker = await Tesseract.createWorker(lang, 1, {
-            workerPath: chrome.runtime.getURL('OCR/scripts/worker.min.js'),
-            corePath: chrome.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
-            langPath: chrome.runtime.getURL(langPathDir),
-            workerBlobURL: false,
-            cacheMethod: 'write', // Cambiado a 'write' para cachear en IndexedDB y acelerar arranques futuros
-            gzip: true
-          });
-          currentLang = lang;
-          currentMode = isBestMode;
-        }
+        await getOrCreateWorker(message.ocrLang, message.bestMode);
 
         // Preprocesar la imagen para mejorar la precisión del OCR
         const preprocessed = await new Promise((resolve, reject) => {
