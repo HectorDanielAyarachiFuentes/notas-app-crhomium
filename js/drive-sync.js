@@ -175,6 +175,11 @@ async function driveApiRequest(url, options, initialToken) {
     // Limpiar caché al recibir 401 para forzar la obtención de uno nuevo
     memoryToken = null;
     await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
+
+    // Invalidar el token en la caché nativa del navegador para forzar uno nuevo
+    if (browserAPI.identity && browserAPI.identity.removeCachedAuthToken) {
+      await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, resolve));
+    }
     
     token = await getAuthToken(false); // Obtener nuevo token no interactivamente
     options.headers['Authorization'] = `Bearer ${token}`;
@@ -295,6 +300,12 @@ export async function getAuthTokenAndInfo(interactive = false) {
         console.warn("Token de usuario expirado. Reintentando...");
         memoryToken = null;
         await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
+
+        // Invalidar el token en la caché nativa del navegador para forzar uno nuevo
+        if (browserAPI.identity && browserAPI.identity.removeCachedAuthToken) {
+            await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, resolve));
+        }
+
         token = await getAuthToken(interactive);
         response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
             headers: { 'Authorization': `Bearer ${token}` }
