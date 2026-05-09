@@ -85,34 +85,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const origColors = new Uint8Array(data.length);
               origColors.set(data);
 
-              // 2. Preprocesamiento integral: Escala de grises + Normalización (Histogram Stretching)
-              // Esta solución unificada reemplaza los parches anteriores y garantiza una imagen
-              // óptima para el motor LSTM de Tesseract (texto negro sobre fondo blanco).
+              // 2. Preprocesamiento integral: Escala de grises + Normalización
               const totalPixels = canvas.width * canvas.height;
               let minGray = 255, maxGray = 0;
-              const grays = new Uint8Array(totalPixels);
-              let pi = 0;
               
               for (let i = 0; i < data.length; i += 4) {
-                // Luminancia estándar
+                // Luminancia estándar guardada temporalmente en el canal R
                 let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-                grays[pi++] = g;
+                data[i] = g;
                 if (g < minGray) minGray = g;
                 if (g > maxGray) maxGray = g;
               }
               
               const range = maxGray - minGray || 1;
               let brightnessSum = 0;
-              pi = 0;
               
               for (let i = 0; i < data.length; i += 4) {
-                let stretched = Math.round((grays[pi++] - minGray) / range * 255);
+                let stretched = Math.round((data[i] - minGray) / range * 255);
                 brightnessSum += stretched;
                 data[i] = data[i+1] = data[i+2] = stretched;
               }
               
               // 3. Inversión inteligente: Tesseract requiere texto oscuro sobre fondo claro.
-              // Si el brillo promedio es bajo (fondo oscuro), invertimos los colores.
               const avgBrightness = brightnessSum / totalPixels;
               if (avgBrightness < 127) {
                 for (let i = 0; i < data.length; i += 4) {
@@ -120,8 +114,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
+              // 3.5 Reducción de Ruido (Filtro Suavizado Cruzado Rápido)
+              // Limpia el "polvo" visual antes de Otsu sin difuminar demasiado los bordes
+              const w = canvas.width;
+              const h = canvas.height;
+              const cleanData = new Uint8ClampedArray(data); // Copia rápida de lectura
+              for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                  const i = (y * w + x) * 4;
+                  // Promedio rápido de los 5 píxeles en forma de cruz (centro, arriba, abajo, izq, der)
+                  const avg = (cleanData[i] + cleanData[i - 4] + cleanData[i + 4] + cleanData[i - w * 4] + cleanData[i + w * 4]) / 5;
+                  data[i] = data[i+1] = data[i+2] = avg;
+                }
+              }
+
               // 4. Binarización de Otsu (Filtro de Ruido por Umbral Adaptativo)
-              // Calcula el punto óptimo para separar el texto (primer plano) del fondo, ignorando sombras o gradientes.
               let histogram = new Int32Array(256);
               for (let i = 0; i < data.length; i += 4) {
                 histogram[data[i]]++;
@@ -130,11 +137,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               let sum = 0;
               for (let t = 0; t < 256; t++) sum += t * histogram[t];
 
-              let sumB = 0;
-              let wB = 0;
-              let wF = 0;
-              let varMax = 0;
-              let otsuThreshold = 0;
+              let sumB = 0, wB = 0, wF = 0, varMax = 0, otsuThreshold = 0;
 
               for (let t = 0; t < 256; t++) {
                 wB += histogram[t];
@@ -144,10 +147,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (wF === 0) break;
 
                 sumB += t * histogram[t];
-
                 let mB = sumB / wB;
                 let mF = (sum - sumB) / wF;
-
                 let varBetween = wB * wF * (mB - mF) * (mB - mF);
 
                 if (varBetween > varMax) {
@@ -156,9 +157,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
-              // Aplicamos el umbral: texto oscuro (< umbral) a negro puro (0), fondo a blanco puro (255)
+              // Factor de Engrosamiento (Weighting)
+              // Sumamos un offset al umbral (+15) para que Tesseract vea los trazos condensados o finos con más cuerpo.
+              const finalThreshold = Math.min(255, otsuThreshold + 15);
+
+              // Aplicamos el umbral: texto oscuro (<= finalThreshold) a negro puro (0)
               for (let i = 0; i < data.length; i += 4) {
-                const bw = data[i] <= otsuThreshold ? 0 : 255;
+                const bw = data[i] <= finalThreshold ? 0 : 255;
                 data[i] = data[i+1] = data[i+2] = bw;
               }
 
@@ -254,34 +259,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // ══════════════════════════════════════════════════════════════════════
         // Post-procesamiento avanzado: formateo armónico del texto
         // ══════════════════════════════════════════════════════════════════════
+        const forceTableFormat = (message.psmMode === '3' || (message.psmMode === 'auto' && preprocessed.isTableLayout));
+        let mergedLines = [];
 
-        // ── Paso 1: Fusionar líneas en la misma posición Y ──────────────────
-        // Tesseract a veces parte una línea visual en dos si hay emojis/iconos
-        const mergedLines = [];
-        for (const line of rawLines) {
-          if (!line.bbox) { mergedLines.push(line); continue; }
-          const midY = (line.bbox.y0 + line.bbox.y1) / 2;
-          const lastMerged = mergedLines[mergedLines.length - 1];
-          if (lastMerged && lastMerged.bbox) {
-            const lastMidY = (lastMerged.bbox.y0 + lastMerged.bbox.y1) / 2;
-            const lastH = lastMerged.bbox.y1 - lastMerged.bbox.y0;
-            // Si el centro Y está dentro del 40% de la altura de la línea anterior → misma línea
-            if (Math.abs(midY - lastMidY) < lastH * 0.4) {
-              lastMerged.text = (lastMerged.text || '') + ' ' + (line.text || '');
-              lastMerged.words = (lastMerged.words || []).concat(line.words || []);
-              lastMerged.bbox.x1 = Math.max(lastMerged.bbox.x1, line.bbox.x1);
-              lastMerged.bbox.y0 = Math.min(lastMerged.bbox.y0, line.bbox.y0);
-              lastMerged.bbox.y1 = Math.max(lastMerged.bbox.y1, line.bbox.y1);
-              continue;
+        if (forceTableFormat) {
+          // ── Paso 1 (Tabla): Construcción geométrica de cuadrícula ──────────
+          // Ignoramos el orden de lectura de Tesseract y reconstruimos las filas midiendo el eje Y
+          let allWords = data.words || [];
+          allWords = allWords.filter(w => (w.text || '').trim().length > 0 && w.bbox);
+          
+          allWords.sort((a, b) => {
+            const midA = (a.bbox.y0 + a.bbox.y1) / 2;
+            const midB = (b.bbox.y0 + b.bbox.y1) / 2;
+            return midA - midB;
+          });
+
+          for (const word of allWords) {
+            const midY = (word.bbox.y0 + word.bbox.y1) / 2;
+            let placed = false;
+            
+            for (let i = mergedLines.length - 1; i >= 0; i--) {
+              const row = mergedLines[i];
+              const rowMidY = (row.bbox.y0 + row.bbox.y1) / 2;
+              const rowHeight = row.bbox.y1 - row.bbox.y0;
+              
+              if (Math.abs(midY - rowMidY) < rowHeight * 0.4) {
+                row.words.push(word);
+                row.bbox.x0 = Math.min(row.bbox.x0, word.bbox.x0);
+                row.bbox.x1 = Math.max(row.bbox.x1, word.bbox.x1);
+                row.bbox.y0 = Math.min(row.bbox.y0, word.bbox.y0);
+                row.bbox.y1 = Math.max(row.bbox.y1, word.bbox.y1);
+                placed = true;
+                break;
+              }
+            }
+            if (!placed) {
+              mergedLines.push({ words: [word], bbox: { ...word.bbox } });
             }
           }
-          // Clonar para no mutar data original
-          mergedLines.push({
-            text: line.text,
-            words: [...(line.words || [])],
-            bbox: { ...line.bbox },
-            confidence: line.confidence
-          });
+
+          // Ordenar cada fila geométricamente de izquierda a derecha
+          for (const row of mergedLines) {
+            row.words.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+            row.text = row.words.map(w => w.text).join(' ');
+          }
+        } else {
+          // ── Paso 1 (Párrafo): Fusión estándar de líneas secuenciales ──────
+          for (const line of rawLines) {
+            if (!line.bbox) { mergedLines.push(line); continue; }
+            const midY = (line.bbox.y0 + line.bbox.y1) / 2;
+            const lastMerged = mergedLines[mergedLines.length - 1];
+            if (lastMerged && lastMerged.bbox) {
+              const lastMidY = (lastMerged.bbox.y0 + lastMerged.bbox.y1) / 2;
+              const lastH = lastMerged.bbox.y1 - lastMerged.bbox.y0;
+              if (Math.abs(midY - lastMidY) < lastH * 0.4) {
+                lastMerged.text = (lastMerged.text || '') + ' ' + (line.text || '');
+                lastMerged.words = (lastMerged.words || []).concat(line.words || []);
+                lastMerged.bbox.x1 = Math.max(lastMerged.bbox.x1, line.bbox.x1);
+                lastMerged.bbox.y0 = Math.min(lastMerged.bbox.y0, line.bbox.y0);
+                lastMerged.bbox.y1 = Math.max(lastMerged.bbox.y1, line.bbox.y1);
+                continue;
+              }
+            }
+            mergedLines.push({
+              text: line.text,
+              words: [...(line.words || [])],
+              bbox: { ...line.bbox },
+              confidence: line.confidence
+            });
+          }
         }
 
         // ── Paso 2: Diccionario de emojis mal leídos por Tesseract ─────────
@@ -352,12 +398,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Si conf > 80%: aceptar (Tesseract seguro)
         // Si conf 50-80%: validar contra diccionario, intentar corregir si no está
         // Si conf < 50%: solo aceptar si está en diccionario o es emoji
+
         for (const line of mergedLines) {
           if (!line.words || !line.words.length) continue;
 
           const cleanWords = [];
+          let lastWordX1 = null;
           for (let w = 0; w < line.words.length; w++) {
             const word = line.words[w];
+            
+            if (forceTableFormat && lastWordX1 !== null) {
+              const gap = word.bbox.x0 - lastWordX1;
+              const height = line.bbox.y1 - line.bbox.y0;
+              // Si la separación física entre palabras es grande, es una nueva columna
+              if (gap > height * 1.5) {
+                cleanWords.push('|');
+              }
+            }
+            
             const conf = word.confidence || 0;
             let text = (word.text || '').trim();
             if (!text) continue;
@@ -462,6 +520,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (text.length >= 5 && /[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
               }
             }
+            lastWordX1 = line.words[w].bbox.x1;
           }
           line.text = cleanWords.join(' ');
         }
@@ -562,6 +621,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
 
           formattedLines.push(text);
+        }
+
+        // Si es formato tabla, aseguramos la sintaxis Markdown
+        if (forceTableFormat) {
+          let hasTable = false;
+          for (let i = 0; i < formattedLines.length; i++) {
+            if (formattedLines[i].includes('|')) {
+              hasTable = true;
+              formattedLines[i] = '| ' + formattedLines[i] + ' |';
+            }
+          }
+          // Insertamos la fila divisoria de Markdown en la primera fila de tabla
+          if (hasTable) {
+            for (let i = 0; i < formattedLines.length; i++) {
+              if (formattedLines[i].includes('|')) {
+                const cols = formattedLines[i].split('|').length - 2;
+                let separator = '|';
+                for(let c=0; c<cols; c++) separator += ' --- |';
+                formattedLines.splice(i + 1, 0, separator);
+                break; // Solo insertar después del primer encabezado
+              }
+            }
+          }
         }
 
         // ── Paso 5: Limpieza final global (Unión inteligente de líneas) ──────
