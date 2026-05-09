@@ -6,44 +6,71 @@ let ocrMutex = Promise.resolve(); // Cola de exclusión mutua para evitar crashe
 
 async function getOrCreateWorker(targetLang, isBestMode) {
   let lang = targetLang || 'spa';
-  // Añadir siempre inglés como modelo secundario
   if (lang !== 'eng') lang = lang + '+eng';
 
   if (cachedWorker && currentLang === lang && currentMode === isBestMode) {
     return cachedWorker;
   }
 
-  // Si ya hay una creación en proceso, esperamos a que termine
   if (workerCreationPromise) {
     await workerCreationPromise;
-    if (cachedWorker && currentLang === lang && currentMode === isBestMode) {
-      return cachedWorker;
-    }
+    if (cachedWorker && currentLang === lang && currentMode === isBestMode) return cachedWorker;
   }
 
   workerCreationPromise = (async () => {
-    if (cachedWorker) {
-      await cachedWorker.terminate();
-    }
-    
-    console.log(`Offscreen: Creando/Precargando worker para: ${lang} (Mode: ${isBestMode ? 'Best' : 'Fast'})`);
-    const langPathDir = isBestMode ? 'OCR/tessdata_best/' : 'OCR/tessdata/';
+    let attempts = 0;
+    let useBest = isBestMode;
 
-    cachedWorker = await Tesseract.createWorker(lang, 1, {
-      workerPath: chrome.runtime.getURL('OCR/scripts/worker.min.js'),
-      corePath: chrome.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
-      langPath: chrome.runtime.getURL(langPathDir),
-      workerBlobURL: false,
-      cacheMethod: 'write', // Cambiado a 'write' para cachear en IndexedDB y acelerar arranques futuros
-      gzip: true
-    });
-    currentLang = lang;
-    currentMode = isBestMode;
+    while (attempts < 2) {
+      try {
+        if (cachedWorker) {
+          await cachedWorker.terminate().catch(() => {});
+          cachedWorker = null;
+        }
+        
+        console.log(`Offscreen: Iniciando Worker Local (${lang}, Best: ${useBest}, Intento: ${attempts + 1})`);
+        
+        // Rutas relativas desde offscreen.html (ubicado en /OCR/)
+        const workerPath = 'scripts/worker.min.js';
+        const corePath = 'scripts/tesseract-core-simd.wasm.js';
+        const langPath = useBest ? 'tessdata_best/' : 'tessdata/';
+
+        // Inicialización híbrida v4/v5 (máxima compatibilidad)
+        const worker = await Tesseract.createWorker(lang, useBest ? 1 : 3, {
+          workerPath: workerPath,
+          corePath: corePath,
+          langPath: langPath,
+          workerBlobURL: false,
+          gzip: true,
+          logger: m => console.log(`OCR [${m.status}]: ${Math.round(m.progress * 100)}%`)
+        });
+
+        cachedWorker = worker;
+        currentLang = lang;
+        currentMode = useBest;
+        return cachedWorker;
+      } catch (e) {
+        console.error(`Offscreen: Error en intento ${attempts + 1} (Best: ${useBest}):`, e);
+        attempts++;
+        if (useBest) {
+          console.log('Offscreen: Fallback a modo Fast por error en modelo Best');
+          useBest = false; // Intentar con el modelo ligero si el pesado falla
+        }
+        if (cachedWorker) {
+          await cachedWorker.terminate().catch(() => {});
+          cachedWorker = null;
+        }
+        if (attempts >= 2) throw e;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
   })();
 
-  await workerCreationPromise;
-  workerCreationPromise = null;
-  return cachedWorker;
+  try {
+    return await workerCreationPromise;
+  } finally {
+    workerCreationPromise = null;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -64,13 +91,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           img.onload = () => {
             try {
               const canvas = document.createElement('canvas');
-              // Escalar dinámicamente: Tesseract prefiere texto de ~30px de alto.
-              // Imágenes enormes (ej: 2000px) confunden al motor, y pequeñas necesitan escalado.
-              // Apuntamos a un ancho óptimo de ~1500px, con un factor máximo de 3x y mínimo de 1x.
               const MAX_PIXELS = 4000000; // Límite seguro de memoria para WebAssembly (4 MP)
               let scale = Math.max(1, Math.min(3, 1500 / img.width));
               
-              // Protección contra imágenes excesivamente largas (capturas con scroll)
               if ((img.width * scale) * (img.height * scale) > MAX_PIXELS) {
                 scale = Math.sqrt(MAX_PIXELS / (img.width * img.height));
               }
@@ -78,10 +101,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               canvas.width = Math.floor(img.width * scale);
               canvas.height = Math.floor(img.height * scale);
               const ctx = canvas.getContext('2d');
-
-              // DESACTIVAR el suavizado (anti-aliasing). El suavizado difumina los bordes
-              // de las fuentes condensadas/pegadas, haciendo que Tesseract fusione letras
-              // (ej: "municipales" -> "Muelas"). Bordes nítidos (crisp edges) son clave para OCR.
               ctx.imageSmoothingEnabled = false;
 
               // 1. Dibujar imagen escalada
@@ -96,9 +115,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // 2. Preprocesamiento integral: Escala de grises + Normalización
               const totalPixels = canvas.width * canvas.height;
               let minGray = 255, maxGray = 0;
-              
               for (let i = 0; i < data.length; i += 4) {
-                // Luminancia estándar guardada temporalmente en el canal R
                 let g = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
                 data[i] = g;
                 if (g < minGray) minGray = g;
@@ -107,14 +124,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               
               const range = maxGray - minGray || 1;
               let brightnessSum = 0;
-              
               for (let i = 0; i < data.length; i += 4) {
                 let stretched = Math.round((data[i] - minGray) / range * 255);
                 brightnessSum += stretched;
                 data[i] = data[i+1] = data[i+2] = stretched;
               }
               
-              // 3. Inversión inteligente: Tesseract requiere texto oscuro sobre fondo claro.
               const avgBrightness = brightnessSum / totalPixels;
               if (avgBrightness < 127) {
                 for (let i = 0; i < data.length; i += 4) {
@@ -122,104 +137,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
-              // 3.5 Reducción de Ruido (Filtro Suavizado Cruzado Rápido)
-              // Limpia el "polvo" visual antes de Otsu sin difuminar demasiado los bordes
-              const w = canvas.width;
-              const h = canvas.height;
-              const cleanData = new Uint8ClampedArray(data); // Copia rápida de lectura
-              for (let y = 1; y < h - 1; y++) {
-                for (let x = 1; x < w - 1; x++) {
-                  const i = (y * w + x) * 4;
-                  // Promedio rápido de los 5 píxeles en forma de cruz (centro, arriba, abajo, izq, der)
-                  const avg = (cleanData[i] + cleanData[i - 4] + cleanData[i + 4] + cleanData[i - w * 4] + cleanData[i + w * 4]) / 5;
-                  data[i] = data[i+1] = data[i+2] = avg;
-                }
-              }
-
-              // 4. Binarización de Otsu (Filtro de Ruido por Umbral Adaptativo)
+              // 3. Reducción de Ruido y Binarización de Otsu
               let histogram = new Int32Array(256);
-              for (let i = 0; i < data.length; i += 4) {
-                histogram[data[i]]++;
-              }
+              for (let i = 0; i < data.length; i += 4) histogram[data[i]]++;
               
               let sum = 0;
               for (let t = 0; t < 256; t++) sum += t * histogram[t];
-
               let sumB = 0, wB = 0, wF = 0, varMax = 0, otsuThreshold = 0;
-
               for (let t = 0; t < 256; t++) {
                 wB += histogram[t];
                 if (wB === 0) continue;
-
                 wF = totalPixels - wB;
                 if (wF === 0) break;
-
                 sumB += t * histogram[t];
                 let mB = sumB / wB;
                 let mF = (sum - sumB) / wF;
                 let varBetween = wB * wF * (mB - mF) * (mB - mF);
-
                 if (varBetween > varMax) {
                   varMax = varBetween;
                   otsuThreshold = t;
                 }
               }
 
-              // Factor de Engrosamiento (Weighting)
-              // Sumamos un offset al umbral (+15) para que Tesseract vea los trazos condensados o finos con más cuerpo.
               const finalThreshold = Math.min(255, otsuThreshold + 15);
-
-              // Aplicamos el umbral: texto oscuro (<= finalThreshold) a negro puro (0)
               for (let i = 0; i < data.length; i += 4) {
                 const bw = data[i] <= finalThreshold ? 0 : 255;
                 data[i] = data[i+1] = data[i+2] = bw;
               }
 
-              // 5. Detección Inteligente de Columnas (Modo 'auto')
-              // Si detectamos grandes canalones blancos verticales, es muy probable que sea una tabla o texto en columnas.
-              let isTableLayout = false;
+              // 4. Detección Inteligente de Columnas
+              let isMultiColumn = false;
               if (message.psmMode === 'auto') {
                 const w = canvas.width;
                 const h = canvas.height;
                 const colDarkness = new Uint32Array(w);
-                
-                // Calculamos la "oscuridad" de cada columna (cantidad de píxeles de texto)
                 for (let y = 0; y < h; y++) {
                   for (let x = 0; x < w; x++) {
                     const i = (y * w + x) * 4;
-                    // El texto es oscuro (valor < 128)
-                    if (data[i] < 128) {
-                      colDarkness[x]++;
-                    }
+                    if (data[i] < 128) colDarkness[x]++;
                   }
                 }
-                
                 let textBlockCount = 0;
                 let inTextBlock = false;
                 let currentGutterWidth = 0;
-                // Un canalón (gutter) debe ser al menos el 1.5% del ancho total para considerarse separador de columnas
                 const minGutterWidth = Math.max(10, Math.floor(w * 0.015)); 
-                
                 for (let x = 0; x < w; x++) {
-                  // Una columna tiene texto si tiene más de 2 píxeles oscuros (filtro de ruido)
                   const hasText = colDarkness[x] > 2;
-                  
                   if (hasText) {
                     currentGutterWidth = 0;
-                    if (!inTextBlock) {
-                      inTextBlock = true;
-                      textBlockCount++;
-                    }
+                    if (!inTextBlock) { inTextBlock = true; textBlockCount++; }
                   } else {
                     currentGutterWidth++;
-                    if (currentGutterWidth > minGutterWidth && inTextBlock) {
-                      inTextBlock = false;
-                    }
+                    if (currentGutterWidth > minGutterWidth && inTextBlock) inTextBlock = false;
                   }
                 }
-                
-                // Si hay 2 o más bloques de texto claramente separados, asumimos layout de tabla/columnas
-                isTableLayout = textBlockCount >= 2;
+                isMultiColumn = textBlockCount >= 2;
               }
 
               ctx.putImageData(imgData, 0, 0);
@@ -229,7 +201,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 origColors: origColors, 
                 imgWidth: canvas.width, 
                 imgHeight: canvas.height,
-                isTableLayout: isTableLayout 
+                isMultiColumn: isMultiColumn 
               });
             } catch (e) {
               reject(new Error('Error al procesar imagen: ' + e.message));
@@ -240,564 +212,110 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
 
         console.log('Offscreen: Procesando OCR...');
+        let psm = message.psmMode || 'auto';
+        if (psm === 'auto') psm = preprocessed.isMultiColumn ? '3' : '6';
+        await cachedWorker.setParameters({ tessedit_pageseg_mode: psm });
 
-        // PSM dinámico (por defecto auto -> inteligente)
-        try {
-          let psm = message.psmMode || 'auto';
-          if (psm === 'auto') {
-            psm = preprocessed.isTableLayout ? '3' : '6';
-            console.log(`Offscreen: PSM Inteligente detectó -> ${preprocessed.isTableLayout ? 'Tabla/Columnas (PSM 3)' : 'Bloque (PSM 6)'}`);
-          } else {
-            console.log(`Offscreen: Configurando PSM manual a ${psm}`);
-          }
-          await cachedWorker.setParameters({ tessedit_pageseg_mode: psm });
-        } catch(e) {
-          console.warn('Offscreen: No se pudo fijar PSM, usando modo por defecto.', e);
-        }
-
-        // Timeout de seguridad de 30 segundos
         const recognizePromise = cachedWorker.recognize(preprocessed.dataUrl);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('El motor OCR tardó demasiado (Timeout)')), 30000));
-        
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout OCR')), 30000));
         const { data } = await Promise.race([recognizePromise, timeoutPromise]);
 
-        const scale = preprocessed.scale;
-        const rawLines = data.lines || [];
-
-        // ══════════════════════════════════════════════════════════════════════
-        // Post-procesamiento avanzado: formateo armónico del texto
-        // ══════════════════════════════════════════════════════════════════════
-        const forceTableFormat = (message.psmMode === '3' || (message.psmMode === 'auto' && preprocessed.isTableLayout));
-        let mergedLines = [];
+        // ── Paso 5: Ensamblaje Estructural Semántico ──
+        const forceTableFormat = (message.psmMode === '3');
+        let finalOutput = '';
 
         if (forceTableFormat) {
-          // ── Paso 1 (Tabla): Construcción geométrica de cuadrícula ──────────
-          // Ignoramos el orden de lectura de Tesseract y reconstruimos las filas midiendo el eje Y
-          let allWords = data.words || [];
-          allWords = allWords.filter(w => (w.text || '').trim().length > 0 && w.bbox);
-          
-          allWords.sort((a, b) => {
-            const midA = (a.bbox.y0 + a.bbox.y1) / 2;
-            const midB = (b.bbox.y0 + b.bbox.y1) / 2;
-            return midA - midB;
-          });
+          // MODO TABLA: Reconstrucción geométrica
+          let mergedLines = [];
+          let allWords = (data.words || []).filter(w => (w.text || '').trim().length > 0 && w.bbox);
+          allWords.sort((a, b) => ((a.bbox.y0 + a.bbox.y1) / 2) - ((b.bbox.y0 + b.bbox.y1) / 2));
 
           for (const word of allWords) {
             const midY = (word.bbox.y0 + word.bbox.y1) / 2;
             let placed = false;
-            
             for (let i = mergedLines.length - 1; i >= 0; i--) {
               const row = mergedLines[i];
               const rowMidY = (row.bbox.y0 + row.bbox.y1) / 2;
-              const rowHeight = row.bbox.y1 - row.bbox.y0;
-              
-              if (Math.abs(midY - rowMidY) < rowHeight * 0.4) {
+              if (Math.abs(midY - rowMidY) < (row.bbox.y1 - row.bbox.y0) * 0.4) {
                 row.words.push(word);
                 row.bbox.x0 = Math.min(row.bbox.x0, word.bbox.x0);
                 row.bbox.x1 = Math.max(row.bbox.x1, word.bbox.x1);
                 row.bbox.y0 = Math.min(row.bbox.y0, word.bbox.y0);
                 row.bbox.y1 = Math.max(row.bbox.y1, word.bbox.y1);
-                placed = true;
-                break;
+                placed = true; break;
               }
             }
-            if (!placed) {
-              mergedLines.push({ words: [word], bbox: { ...word.bbox } });
-            }
+            if (!placed) mergedLines.push({ words: [word], bbox: { ...word.bbox } });
           }
 
-          // Ordenar cada fila geométricamente de izquierda a derecha
           for (const row of mergedLines) {
             row.words.sort((a, b) => a.bbox.x0 - b.bbox.x0);
-            row.text = row.words.map(w => w.text).join(' ');
+            const cleaned = cleanAndFormatWords(row.words);
+            if (cleaned) finalOutput += `| ${cleaned.replace(/  +/g, ' | ')} |\n`;
+          }
+          if (finalOutput) {
+            const lines = finalOutput.split('\n');
+            const cols = lines[0].split('|').length - 2;
+            let sep = '|'; for(let c=0; c<cols; c++) sep += ' --- |';
+            finalOutput = lines[0] + '\n' + sep + '\n' + lines.slice(1).join('\n');
           }
         } else {
-          // ── Paso 1 (Párrafo): Fusión estándar de líneas secuenciales ──────
-          for (const line of rawLines) {
-            if (!line.bbox) { mergedLines.push(line); continue; }
-            const midY = (line.bbox.y0 + line.bbox.y1) / 2;
-            const lastMerged = mergedLines[mergedLines.length - 1];
-            if (lastMerged && lastMerged.bbox) {
-              const lastMidY = (lastMerged.bbox.y0 + lastMerged.bbox.y1) / 2;
-              const lastH = lastMerged.bbox.y1 - lastMerged.bbox.y0;
-              if (Math.abs(midY - lastMidY) < lastH * 0.4) {
-                lastMerged.text = (lastMerged.text || '') + ' ' + (line.text || '');
-                lastMerged.words = (lastMerged.words || []).concat(line.words || []);
-                lastMerged.bbox.x1 = Math.max(lastMerged.bbox.x1, line.bbox.x1);
-                lastMerged.bbox.y0 = Math.min(lastMerged.bbox.y0, line.bbox.y0);
-                lastMerged.bbox.y1 = Math.max(lastMerged.bbox.y1, line.bbox.y1);
-                continue;
-              }
-            }
-            mergedLines.push({
-              text: line.text,
-              words: [...(line.words || [])],
-              bbox: { ...line.bbox },
-              confidence: line.confidence
-            });
-          }
-        }
-
-        // ── Paso 2: Diccionario de emojis mal leídos por Tesseract ─────────
-        // Solo se aplica cuando la confianza de la palabra es baja (< 50%)
-        const EMOJI_MISREADS = {
-          // ── Thumbs / reacciones ──
-          'Q':  '👎', 'qb': '👎', 'Qb': '👎', 'Y': '👎', 'y': '👎',
-          'qd': '👎', 'Qd': '👎', 'Ql': '👎',
-          'db': '👍', 'dh': '👍', 'dD': '👍', '(de': '👍', 'de': '👍',
-          'cb': '👍', 'Cb': '👍', 'Gb': '👍', 'gb': '👍',
-          'dP': '👍', 'dp': '👍', 'th': '👍',
-
-          // ── Caras felices / risa ──
-          'E8': '😎', 'e8': '😎', 'eB': '😎', 'E 8': '😎', 'EB': '😎',
-          'eD': '😂', '8D': '😂', 'BD': '😂', 'bD': '😂',
-          'O': '🤣', 'O)': '🤣', 'O}': '🤣', 'oO': '🤣', 'OO': '🤣', 'Oo': '🤣',
-          'eP': '😋', 'ep': '😋',
-          ':D': '😁', ':)': '🙂', 'B)': '😎',
-          'xD': '😆', 'XD': '😆', 'xd': '😆',
-          ';)': '😉', ';D': '😉',
-          'eO': '😊', 'e0': '😊', 'eC': '😊',
-          'e@': '😍', 'eé': '😍',
-
-          // ── Caras tristes / negativas ──
-          ':(': '😞', ':c': '😢', ':C': '😢',
-          'e>': '😭', 'T_T': '😭', 'TT': '😭',
-          'D:': '😱', ':O': '😮', ':o': '😮',
-          ':P': '😛', ':p': '😛', 'xP': '😜',
-          '>:(': '😡', 'eé': '😤',
-
-          // ── Corazones ──
-          '<3': '❤️', 'c3': '❤️', 'C3': '❤️', 'e3': '❤️',
-          'S2': '❤️', 's2': '❤️',
-
-          // ── Fuego / efectos ──
-          'JJ': '🎵', 'JT': '🎵', 'Jf': '🎶', 'Jj': '🎵',
-          '@': '🔥',  // solo con baja confianza
-
-          // ── Flechas / direcciones ──
-          'Vv': '⬇️', 'VV': '⬇️', 'vv': '⬇️',
-          'AV': '⬆️', 'Av': '⬆️', 'AA': '⬆️',
-          '>>': '▶️', '<<': '◀️',
-
-          // ── Checks / cruces ──
-          'V': '✔️', 'X': '❌',
-
-          // ── Manos / gestos ──
-          'ok': '👌', 'OK': '👌',
-          'v/': '✌️',
-
-          // ── Estrellas / items ──
-          '*': '⭐', '**': '🌟',
-          '#': '🔢',
-
-          // ── Misc social media ──
-          'RT': '🔁',  // retweet
-          'DM': '✉️',  // mensaje directo
-        };
-
-        // Variantes normalizadas (sin espacios) para matcheo rápido
-        const EMOJI_KEYS_NOSPACE = {};
-        for (const k of Object.keys(EMOJI_MISREADS)) {
-          EMOJI_KEYS_NOSPACE[k.replace(/\s/g, '')] = EMOJI_MISREADS[k];
-        }
-
-        // ── Paso 3: Reconstruir texto con validación por diccionario ─────────
-        // Sistema integral: cada palabra se valida contra el diccionario español.
-        // Si conf > 80%: aceptar (Tesseract seguro)
-        // Si conf 50-80%: validar contra diccionario, intentar corregir si no está
-        // Si conf < 50%: solo aceptar si está en diccionario o es emoji
-
-        for (const line of mergedLines) {
-          if (!line.words || !line.words.length) continue;
-
-          const cleanWords = [];
-          let lastWordX1 = null;
-          for (let w = 0; w < line.words.length; w++) {
-            const word = line.words[w];
-            
-            if (forceTableFormat && lastWordX1 !== null) {
-              const gap = word.bbox.x0 - lastWordX1;
-              const height = line.bbox.y1 - line.bbox.y0;
-              // Si la separación física entre palabras es grande, es una nueva columna
-              if (gap > height * 1.5) {
-                cleanWords.push('|');
-              }
-            }
-            
-            const conf = word.confidence || 0;
-            let text = (word.text || '').trim();
-            if (!text) continue;
-
-            // Eliminar tokens de ruido visual
-            if (/^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
-
-            // Eliminar puntuación suelta con baja confianza
-            if (conf < 60 && /^[.,;:!?'"'`´""''«»]+$/.test(text)) continue;
-
-            // Limpiar comillas/apóstrofes pegados
-            text = text.replace(/^[''`´"""\u201c\u201d]+/, '');
-            text = text.replace(/[''`´"""\u201c\u201d]+$/, '');
-            if (!text) continue;
-
-            // ── Emoji mapping (solo baja confianza) ──
-            if (conf < 50) {
-              const noSpace = text.replace(/\s/g, '');
-              if (EMOJI_MISREADS[text]) { cleanWords.push(EMOJI_MISREADS[text]); continue; }
-              if (EMOJI_KEYS_NOSPACE[noSpace]) { cleanWords.push(EMOJI_KEYS_NOSPACE[noSpace]); continue; }
-              if (w + 1 < line.words.length) {
-                const nw = line.words[w + 1];
-                if ((nw.confidence || 0) < 50) {
-                  const combined = text + (nw.text || '').trim();
-                  if (EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]) {
-                    cleanWords.push(EMOJI_MISREADS[combined] || EMOJI_KEYS_NOSPACE[combined]);
-                    w++; continue;
-                  }
+          // MODO FLUJO: Bloques y Párrafos (Mantiene estructura de columnas)
+          const blocks = data.blocks || [];
+          for (const block of blocks) {
+            let blockText = '';
+            for (const para of block.paragraphs || []) {
+              let paraText = '';
+              for (const line of para.lines || []) {
+                const cleanedLine = cleanAndFormatWords(line.words);
+                if (cleanedLine) {
+                  if (paraText.endsWith('-')) paraText = paraText.slice(0, -1) + cleanedLine;
+                  else paraText += (paraText ? ' ' : '') + cleanedLine;
                 }
               }
+              if (paraText) blockText += (blockText ? '\n\n' : '') + paraText;
             }
-            // ── Intentar fusionar palabras cortadas por Tesseract ──
-            // Ej: "fue te" (fuerte), "vi al" (viral), "cien os" (cientos)
-            if (w + 1 < line.words.length) {
-              const nw = line.words[w + 1];
-              // Verificar físicamente si el espacio entre cajas es muy pequeño
-              // Un espacio real suele ser > 25% del alto de la letra.
-              // Si el gap es muy pequeño, Tesseract partió la palabra o se comió una letra fina.
-              const height = word.bbox.y1 - word.bbox.y0;
-              const gap = nw.bbox.x0 - word.bbox.x1;
-              const gapRatio = gap / height;
-
-              if (gapRatio < 0.25) { // Solo fusionar si están físicamente muy cerca
-                const nextText = (nw.text || '').trim().replace(/^[''`´"""\u201c\u201d]+/, '').replace(/[''`´"""\u201c\u201d]+$/, '');
-                if (nextText) {
-                  const combined = text + nextText;
-                  let mergedValid = null;
-                  if (isSpanishWord(combined)) {
-                    mergedValid = combined;
-                  } else {
-                    const corrected = autoCorrectOCRWord(combined);
-                    if (corrected) mergedValid = corrected;
-                  }
-                  
-                  if (mergedValid) {
-                    cleanWords.push(mergedValid);
-                    w++; // saltar nextText
-                    continue;
-                  }
-                }
-              }
-            }
-
-            // ── Validación por diccionario y Confianza ──
-            const isValid = isSpanishWord(text);
-
-            if (conf >= 80) {
-              // Confianza alta: Confiamos 100% en Tesseract.
-              // Nuestro diccionario es pequeño, así que no debemos destruir palabras
-              // perfectamente leídas (ej: "Desapareció", "encontraron") solo porque no estén en él.
-              cleanWords.push(text);
-            } else if (conf >= 50) {
-              // Confianza media
-              if (isValid) {
-                cleanWords.push(text);
-              } else if (text.length >= 4 && /[aeiouáéíóú]/i.test(text) && !/[0-9]/.test(text)) {
-                // Si parece una palabra normal (tiene vocales, longitud razonable, sin números),
-                // asumimos que es una palabra válida que no está en nuestro diccionario.
-                cleanWords.push(text);
-              } else {
-                // Si parece basura (no tiene vocales, es corta, o tiene números raros), intentamos rescatarla
-                const split = trySplitMergedWord(text);
-                if (split) { cleanWords.push(split); continue; }
-                const corrected = autoCorrectOCRWord(text);
-                if (corrected) { cleanWords.push(corrected); continue; }
-                
-                // Si todo falla, pero al menos tiene vocales, la mantenemos por las dudas
-                if (/[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
-              }
-            } else {
-              // Baja confianza (<50%): Tesseract está adivinando
-              if (isValid) {
-                cleanWords.push(text);
-              } else {
-                // Aquí el diccionario y corrector son obligatorios para rescatar la palabra
-                const corrected = autoCorrectOCRWord(text);
-                if (corrected) { cleanWords.push(corrected); continue; }
-                const split = trySplitMergedWord(text);
-                if (split) { cleanWords.push(split); continue; }
-                
-                // Solo mantener si es larga y tiene vocales (último recurso)
-                if (text.length >= 5 && /[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
-              }
-            }
-            lastWordX1 = line.words[w].bbox.x1;
-          }
-          line.text = cleanWords.join(' ');
-        }
-
-        // ── Paso 3b: Limpieza contextual de líneas de reacciones (YouTube) ──
-        for (const line of mergedLines) {
-          const text = (line.text || '').trim();
-          if (!/Responder/i.test(text)) continue;
-          let cleaned = text.replace(/[—–\-|]/g, ' ').replace(/  +/g, ' ').trim();
-          const numMatch = cleaned.match(/(\d+)/);
-          const count = numMatch ? numMatch[1] : '';
-          const parts = cleaned.split(/\s+/);
-          const responderIdx = parts.findIndex(p => /^Responder$/i.test(p));
-          if (responderIdx >= 0 && parts.length <= 6) {
-            const junk = parts.filter(p => !/^\d+$/.test(p) && !/^Responder$/i.test(p) && p.length <= 4);
-            if (junk.length >= 1) {
-              line.text = count ? '👍 ' + count + ' 👎 Responder' : '👍 👎 Responder';
-            }
+            if (blockText) finalOutput += (finalOutput ? '\n\n' : '') + blockText;
           }
         }
 
-        // ── Paso 3c: Filtrar líneas basura por confianza promedio ────────────
-        // Líneas como "eimierviónn" o ". EE" tienen confianza baja en todas sus palabras
-        for (const line of mergedLines) {
-          if (!line.words || !line.words.length) continue;
-          const wordsWithConf = line.words.filter(w => (w.text || '').trim().length > 0);
-          if (wordsWithConf.length === 0) { line.text = ''; continue; }
-          const avgConf = wordsWithConf.reduce((sum, w) => sum + (w.confidence || 0), 0) / wordsWithConf.length;
-          const lineText = (line.text || '').trim();
-          // Línea con confianza promedio < 40% y texto corto (< 10 chars) → basura
-          if (avgConf < 40 && lineText.length < 10) {
-            line.text = '';
-            continue;
-          }
-          // Línea con confianza promedio < 25% independientemente del largo → basura
-          if (avgConf < 25) {
-            line.text = '';
-            continue;
-          }
-          // Línea que es una sola palabra sin sentido (no tiene vocales y < 50% conf)
-          if (wordsWithConf.length === 1 && avgConf < 50 && !/[aeiouáéíóúAEIOUÁÉÍÓÚ]/.test(lineText)) {
-            line.text = '';
-          }
-        }
-
-        // ── Paso 4: Calcular altura promedio para detección de párrafos ──────
-        let totalLineHeight = 0, validLineCount = 0;
-        for (const line of mergedLines) {
-          if (line.bbox) {
-            totalLineHeight += (line.bbox.y1 - line.bbox.y0);
-            validLineCount++;
-          }
-        }
-        const avgLineHeight = validLineCount > 0 ? totalLineHeight / validLineCount : 40;
-        const PARAGRAPH_GAP = avgLineHeight * 0.8;
-
-        // ── Paso 5: Ensamblar con párrafos, limpieza final por línea ─────────
-        const formattedLines = [];
-        for (let i = 0; i < mergedLines.length; i++) {
-          const line = mergedLines[i];
-          let text = (line.text || '').trimEnd();
-          if (!text) continue;
-
-          // 5a. Limpiar artefactos al inicio de línea
+        // ── Paso 6: Correcciones gramaticales y limpieza final ──
+        let formattedText = finalOutput.trim().split('\n').map(line => {
+          let text = line.trim();
+          if (!text || text.startsWith('|')) return text;
           text = text.replace(/^[\x22\u201c\u201d\u201e\u201f\u2018\u2019\u00ab\u00bb"""''`´]+\s*/, '');
           text = text.replace(/^[a-zA-Z]{1,3}\s*[.,;:]\s+/g, '');
-          text = text.replace(/^[a-z]{1,2}\s+(?=[A-Z])/, '');
-          text = text.replace(/^[A-Z]\.\s+/, '');
-
-          // 5b. Limpiar artefactos al final de línea
-          text = text.replace(/\s+[Vv]{1,2}$/, '');
           text = text.replace(/\s+[|\\\/]$/, '');
-          text = text.replace(/\s+[A-Z]\.$/, '');
-          // Quitar dos puntos/coma sueltos al final que no sean parte del texto
-          text = text.replace(/[:;]$/, '');
-
-          // 5c. UNIVERSAL: En español los apóstrofes NUNCA unen palabras
-          // Reemplazar TODOS los apóstrofes entre letras por espacio
-          // "lo'que" → "lo que", "volveria'a'dejar" → "volveria a dejar", "me'he" → "me he"
           text = text.replace(/(\w)[''`´'](\w)/g, '$1 $2');
+          return text.replace(/  +/g, ' ');
+        }).join('\n');
 
-          // 5d. Normalizar espacios
-          text = text.replace(/  +/g, ' ').trim();
-
-          // 5e. Correcciones OCR español
-          text = text.replace(/\bl\b(?=\s+\d)/g, '↳');
-
-          // 5f. Ignorar líneas vacías o basura
-          if (text.length <= 1 && !/[\d@#]/.test(text)) continue;
-          if (text.length <= 3 && !/[\d@#]/.test(text) && !/^[A-ZÁÉÍÓÚ]/.test(text)) continue;
-
-          // 5g. Detectar gap vertical grande → párrafo
-          if (i > 0 && mergedLines[i - 1].bbox && line.bbox) {
-            const gap = line.bbox.y0 - mergedLines[i - 1].bbox.y1;
-            if (gap > PARAGRAPH_GAP) {
-              formattedLines.push('');
-            }
-          }
-
-          formattedLines.push(text);
-        }
-
-        // Si es formato tabla, aseguramos la sintaxis Markdown
-        if (forceTableFormat) {
-          let hasTable = false;
-          for (let i = 0; i < formattedLines.length; i++) {
-            if (formattedLines[i].includes('|')) {
-              hasTable = true;
-              formattedLines[i] = '| ' + formattedLines[i] + ' |';
-            }
-          }
-          // Insertamos la fila divisoria de Markdown en la primera fila de tabla
-          if (hasTable) {
-            for (let i = 0; i < formattedLines.length; i++) {
-              if (formattedLines[i].includes('|')) {
-                const cols = formattedLines[i].split('|').length - 2;
-                let separator = '|';
-                for(let c=0; c<cols; c++) separator += ' --- |';
-                formattedLines.splice(i + 1, 0, separator);
-                break; // Solo insertar después del primer encabezado
-              }
-            }
-          }
-        }
-
-        // ── Paso 5: Limpieza final global (Unión inteligente de líneas) ──────
-        const forceLineBreaks = (message.psmMode === '3' || (message.psmMode === 'auto' && preprocessed.isTableLayout));
-        let resultText = '';
-        
-        for (let i = 0; i < formattedLines.length; i++) {
-          const current = formattedLines[i];
-          
-          if (current === '') {
-            resultText += '\n\n';
-            continue;
-          }
-          
-          resultText += current;
-          
-          if (i < formattedLines.length - 1 && formattedLines[i+1] !== '') {
-            if (forceLineBreaks) {
-              resultText += '\n';
-            } else {
-              // Modo bloque/párrafo: unir con espacio fluidamente
-              if (current.endsWith('-')) {
-                // Si la línea termina en guion (palabra cortada), lo quitamos y unimos sin espacio
-                resultText = resultText.slice(0, -1);
-              } else {
-                resultText += ' ';
-              }
-            }
-          }
-        }
-        
-        let formattedText = resultText.trim();
-        // Colapsar 3+ saltos de línea consecutivos a máximo 2 (un párrafo)
         formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
 
-        // Correcciones comunes de OCR español: preposiciones fusionadas
         const spanishFixes = [
-          [/\bair\b/g, 'a ir'],
-          [/\bala\b(?=\s)/g, 'a la'],
-          [/\bael\b/g, 'a el'],
-          [/\bdela\b/g, 'de la'],
-          [/\bdel a\b/g, 'de la'],
-          [/\benla\b/g, 'en la'],
-          [/\benel\b/g, 'en el'],
-          [/\bconla\b/g, 'con la'],
-          [/\bconel\b/g, 'con el'],
-          [/\bporla\b/g, 'por la'],
-          [/\bporel\b/g, 'por el'],
-          [/\bSimi\b/g, 'Si mi'],
-          [/\bmeha\b/gi, 'me ha'],
-          [/\bmehe\b/gi, 'me he'],
-          [/\bseha\b/gi, 'se ha'],
-          [/\bnohe\b/gi, 'no he'],
-          [/\bporque\s*que\b/g, 'porque'],
-          [/\bque que\b/g, 'que'],
-          [/\bhey\b(?=[,. ])/g, 'he'],
-          [/\bvolveria\b/g, 'volvería'],
-          [/\bseria\b/g, 'sería'],
-          [/\bpodria\b/g, 'podría'],
-          [/\btendria\b/g, 'tendría'],
-          [/\bharia\b/g, 'haría'],
-          [/\bqueria\b/g, 'quería'],
-          [/\bdeberia\b/g, 'debería'],
+          [/\bair\b/g, 'a ir'], [/\bala\b(?=\s)/g, 'a la'], [/\bdela\b/g, 'de la'], 
+          [/\benla\b/g, 'en la'], [/\benel\b/g, 'en el'], [/\bmeha\b/gi, 'me ha'],
+          [/\bvolveria\b/g, 'volvería'], [/\bseria\b/g, 'sería'], [/\bpodria\b/g, 'podría']
         ];
-        for (const [pattern, replacement] of spanishFixes) {
-          formattedText = formattedText.replace(pattern, replacement);
-        }
-        // Limpiar espacios dobles residuales
-        formattedText = formattedText.replace(/  +/g, ' ');
+        for (const [p, r] of spanishFixes) formattedText = formattedText.replace(p, r);
 
-        // ── Paso 6: Fallback — detección de emojis por color ─────────────────
-        // Si Tesseract devolvió texto vacío o muy corto, escanear la imagen
-        // original buscando clusters de píxeles amarillos (emojis tipo cara).
-        if (formattedText.replace(/\s/g, '').length <= 2) {
-          try {
-            const oc = preprocessed.origColors;
-            const cw = preprocessed.imgWidth;
-            const ch = preprocessed.imgHeight;
-            if (oc && cw && ch) {
-              // Buscar píxeles "amarillo/naranja" (cara de emoji)
-              // HSL: Hue 20-65°, Saturation > 35%, Lightness 35-90%
-              let emojiPixelCount = 0;
-              let minX = cw, maxX = 0, minY = ch, maxY = 0;
-              for (let y = 0; y < ch; y++) {
-                for (let x = 0; x < cw; x++) {
-                  const i = (y * cw + x) * 4;
-                  const r = oc[i], g = oc[i+1], b = oc[i+2];
-                  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-                  const l = (max + min) / 2 / 255;
-                  const d = max - min;
-                  if (d === 0 || l < 0.35 || l > 0.90) continue;
-                  const s = d / (1 - Math.abs(2 * l - 1)) / 255;
-                  if (s < 0.35) continue;
-                  let hue = 0;
-                  if (max === r) hue = 60 * (((g - b) / d) % 6);
-                  else if (max === g) hue = 60 * ((b - r) / d + 2);
-                  else hue = 60 * ((r - g) / d + 4);
-                  if (hue < 0) hue += 360;
-                  // Amarillo/naranja/dorado: 20° - 65°
-                  if (hue >= 20 && hue <= 65) {
-                    emojiPixelCount++;
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                  }
-                }
-              }
-
-              // Si hay suficientes píxeles amarillos (>2% de la imagen)
-              if (emojiPixelCount > (cw * ch) * 0.02) {
-                const emojiSize = Math.max((maxY - minY) || 1, 10);
-                const totalWidth = maxX - minX;
-                const emojiCount = Math.max(1, Math.round(totalWidth / emojiSize));
-                formattedText = '😂'.repeat(Math.min(emojiCount, 20));
-              }
-            }
-          } catch(e) {
-            console.warn('Offscreen: Emoji color detection failed:', e);
-          }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════
-
-        const lines = rawLines.map(line => {
-          let maxHeight = line.bbox ? ((line.bbox.y1 - line.bbox.y0) / scale) : 0;
-          let minTop = line.bbox ? (line.bbox.y0 / scale) : 0;
-
-          const words = (line.words || []).map(word => ({
-            WordText: word.text,
-            Left:   word.bbox ? (word.bbox.x0 / scale) : 0,
-            Top:    word.bbox ? (word.bbox.y0 / scale) : 0,
-            Width:  word.bbox ? ((word.bbox.x1 - word.bbox.x0) / scale) : 0,
-            Height: word.bbox ? ((word.bbox.y1 - word.bbox.y0) / scale) : 0
-          }));
-
-          return { MaxHeight: maxHeight, MinTop: minTop, Words: words };
-        });
-
+        // Overlay para la UI (Ajustado a la escala)
+        const scale = preprocessed.scale;
         const textOverlay = {
-          HasOverlay: lines.length > 0,
-          Message: "Total lines: " + lines.length,
-          Lines: lines
+          HasOverlay: (data.lines || []).length > 0,
+          Lines: (data.lines || []).map(l => ({
+            MaxHeight: ((l.bbox.y1 - l.bbox.y0) / scale),
+            MinTop: (l.bbox.y0 / scale),
+            Words: (l.words || []).map(w => ({
+              WordText: w.text,
+              Left: (w.bbox.x0 / scale), Top: (w.bbox.y0 / scale),
+              Width: ((w.bbox.x1 - w.bbox.x0) / scale), Height: ((w.bbox.y1 - w.bbox.y0) / scale)
+            }))
+          }))
         };
 
-        sendResponse({
+        // Formato de respuesta esperado por cs.js (Copyfish style)
+        sendResponse({ 
           result: {
             ParsedResults: [{ ParsedText: formattedText, TextOverlay: textOverlay }],
             IsErroredOnProcessing: false,
@@ -805,23 +323,70 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         });
       } catch (e) {
-        console.error('Error en Offscreen OCR:', e);
+        console.error('Offscreen Error:', e);
+        // Si hay un error crítico en el WASM, terminamos el worker para que se reinicie en la próxima llamada
         if (cachedWorker) {
-          await cachedWorker.terminate();
+          try {
+            await cachedWorker.terminate();
+          } catch(err) {
+            console.warn('Offscreen: No se pudo terminar el worker accidentado:', err);
+          }
           cachedWorker = null;
         }
         sendResponse({ error: e.message });
       }
     };
 
-    // Encolar la tarea para evitar colisiones en WASM
-    const previousMutex = ocrMutex;
-    ocrMutex = (async () => {
-      try {
-        await previousMutex;
-      } catch (e) {}
-      await task();
-    })();
+    ocrMutex = ocrMutex.then(task);
     return true;
   }
 });
+
+function cleanAndFormatWords(words) {
+  if (!words || !words.length) return '';
+  const cleanWords = [];
+  for (let w = 0; w < words.length; w++) {
+    const word = words[w];
+    const conf = word.confidence || 0;
+    let text = (word.text || '').trim();
+    if (!text || /^[|_~=\-\\\/\[\]{}<>]+$/.test(text)) continue;
+    if (conf < 60 && /^[.,;:!?'"'`´""''«»]+$/.test(text)) continue;
+    text = text.replace(/^[''`´"""\u201c\u201d]+/, '').replace(/[''`´"""\u201c\u201d]+$/, '');
+    if (!text) continue;
+
+    if (conf < 50) {
+      const emoji = detectEmoji(text, words[w+1]);
+      if (emoji) { cleanWords.push(emoji.text); if (emoji.consumed) w++; continue; }
+    }
+
+    if (w + 1 < words.length) {
+      const fused = tryFuseWords(word, words[w+1]);
+      if (fused) { cleanWords.push(fused); w++; continue; }
+    }
+
+    if (conf >= 80 || isSpanishWord(text)) cleanWords.push(text);
+    else {
+      const corrected = autoCorrectOCRWord(text) || trySplitMergedWord(text);
+      if (corrected) cleanWords.push(corrected);
+      else if (text.length >= 4 && /[aeiouáéíóú]/i.test(text)) cleanWords.push(text);
+    }
+  }
+  return cleanWords.join(' ');
+}
+
+function detectEmoji(text, nextWord) {
+  const MAP = { 'Q': '👎', 'qb': '👎', 'db': '👍', 'dh': '👍', 'E8': '😎', 'eD': '😂', '8D': '😂', '<3': '❤️' };
+  if (MAP[text]) return { text: MAP[text], consumed: false };
+  if (nextWord && MAP[text + nextWord.text.trim()]) return { text: MAP[text + nextWord.text.trim()], consumed: true };
+  return null;
+}
+
+function tryFuseWords(w1, w2) {
+  const gap = w2.bbox.x0 - w1.bbox.x1;
+  if (gap / (w1.bbox.y1 - w1.bbox.y0) < 0.25) {
+    const combined = w1.text.trim() + w2.text.trim();
+    if (isSpanishWord(combined)) return combined;
+    return autoCorrectOCRWord(combined);
+  }
+  return null;
+}
