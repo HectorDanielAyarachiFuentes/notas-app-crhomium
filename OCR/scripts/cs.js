@@ -264,6 +264,7 @@ if (typeof browser === "undefined") {
 			},
 			show: function () {
 				this.resetPosition();
+				if ($MASK) $MASK.find('p.ocrext-element').css('transform', 'translate(-50%, -50%) scale(1)');
 				$MASK.show();
 				return this;
 			},
@@ -402,6 +403,7 @@ if (typeof browser === "undefined") {
 			},
 			show: function () {
 				this.resetPosition();
+				if ($MASK) $MASK.find('p.ocrext-element').css('transform', 'translate(-50%, -50%) scale(1)'); // Restaurar frase centrada
 				$MASK.show();
 				return this;
 			},
@@ -1235,7 +1237,7 @@ return false;
 	 		return true;
 	 	}
 	 	var $body = $('body');
-	 	$('.ocrext-mask p.ocrext-element').css('transform', 'scale(0,0)');
+	 	$('.ocrext-mask p.ocrext-element').css('transform', 'translate(-50%, -50%) scale(0,0)');
 	 	$SELECTOR = $('<div class="ocrext-selector"></div>');
 	 	$SELECTOR.appendTo($body);
 	 	var scrollTop = $body.scrollTop();

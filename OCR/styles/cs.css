@@ -84,13 +84,17 @@
 
 .ocrext-overlay .ocrext-mask p.ocrext-element {
 	font-size: 54px;
-	top: 25%;
 	color: #000;
 	text-align: center;
-	/*transform:scale(0,0);
-	.transition-all();*/
-	position: relative;
-	/*text-shadow: 5px 3px 5px #DECECE;*/
+	position: fixed;
+	top: 40%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	margin: 0;
+	width: 100%;
+	pointer-events: none;
+	z-index: 2147483647;
+	text-shadow: 2px 2px 4px rgba(255,255,255,0.8);
 }
 
 .ocrext-overlay .ocrext-selector {
