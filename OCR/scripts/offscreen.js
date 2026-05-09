@@ -2,6 +2,7 @@ let cachedWorker = null;
 let currentLang = null;
 let currentMode = null;
 let workerCreationPromise = null;
+let ocrMutex = Promise.resolve(); // Cola de exclusión mutua para evitar crashes de WASM
 
 async function getOrCreateWorker(targetLang, isBestMode) {
   let lang = targetLang || 'spa';
@@ -53,7 +54,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.evt === 'performLocalOCR') {
-    (async () => {
+    const task = async () => {
       try {
         await getOrCreateWorker(message.ocrLang, message.bestMode);
 
@@ -804,6 +805,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         sendResponse({ error: e.message });
       }
+    };
+
+    // Encolar la tarea para evitar colisiones en WASM
+    const previousMutex = ocrMutex;
+    ocrMutex = (async () => {
+      try {
+        await previousMutex;
+      } catch (e) {}
+      await task();
     })();
     return true;
   }
