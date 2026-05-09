@@ -27,7 +27,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             corePath: chrome.runtime.getURL('OCR/scripts/tesseract-core-simd.wasm.js'),
             langPath: chrome.runtime.getURL(langPathDir),
             workerBlobURL: false,
-            cacheMethod: 'none',
+            cacheMethod: 'write', // Cambiado a 'write' para cachear en IndexedDB y acelerar arranques futuros
             gzip: true
           });
           currentLang = lang;
