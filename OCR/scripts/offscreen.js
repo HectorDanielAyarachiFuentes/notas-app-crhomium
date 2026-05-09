@@ -120,7 +120,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
-              // 4. Detección Inteligente de Columnas (Modo 'auto')
+              // 4. Binarización de Otsu (Filtro de Ruido por Umbral Adaptativo)
+              // Calcula el punto óptimo para separar el texto (primer plano) del fondo, ignorando sombras o gradientes.
+              let histogram = new Int32Array(256);
+              for (let i = 0; i < data.length; i += 4) {
+                histogram[data[i]]++;
+              }
+              
+              let sum = 0;
+              for (let t = 0; t < 256; t++) sum += t * histogram[t];
+
+              let sumB = 0;
+              let wB = 0;
+              let wF = 0;
+              let varMax = 0;
+              let otsuThreshold = 0;
+
+              for (let t = 0; t < 256; t++) {
+                wB += histogram[t];
+                if (wB === 0) continue;
+
+                wF = totalPixels - wB;
+                if (wF === 0) break;
+
+                sumB += t * histogram[t];
+
+                let mB = sumB / wB;
+                let mF = (sum - sumB) / wF;
+
+                let varBetween = wB * wF * (mB - mF) * (mB - mF);
+
+                if (varBetween > varMax) {
+                  varMax = varBetween;
+                  otsuThreshold = t;
+                }
+              }
+
+              // Aplicamos el umbral: texto oscuro (< umbral) a negro puro (0), fondo a blanco puro (255)
+              for (let i = 0; i < data.length; i += 4) {
+                const bw = data[i] <= otsuThreshold ? 0 : 255;
+                data[i] = data[i+1] = data[i+2] = bw;
+              }
+
+              // 5. Detección Inteligente de Columnas (Modo 'auto')
               // Si detectamos grandes canalones blancos verticales, es muy probable que sea una tabla o texto en columnas.
               let isTableLayout = false;
               if (message.psmMode === 'auto') {
