@@ -67,9 +67,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // Escalar dinámicamente: Tesseract prefiere texto de ~30px de alto.
               // Imágenes enormes (ej: 2000px) confunden al motor, y pequeñas necesitan escalado.
               // Apuntamos a un ancho óptimo de ~1500px, con un factor máximo de 3x y mínimo de 1x.
-              const scale = Math.max(1, Math.min(3, 1500 / img.width));
-              canvas.width = img.width * scale;
-              canvas.height = img.height * scale;
+              const MAX_PIXELS = 4000000; // Límite seguro de memoria para WebAssembly (4 MP)
+              let scale = Math.max(1, Math.min(3, 1500 / img.width));
+              
+              // Protección contra imágenes excesivamente largas (capturas con scroll)
+              if ((img.width * scale) * (img.height * scale) > MAX_PIXELS) {
+                scale = Math.sqrt(MAX_PIXELS / (img.width * img.height));
+              }
+              
+              canvas.width = Math.floor(img.width * scale);
+              canvas.height = Math.floor(img.height * scale);
               const ctx = canvas.getContext('2d');
 
               // DESACTIVAR el suavizado (anti-aliasing). El suavizado difumina los bordes

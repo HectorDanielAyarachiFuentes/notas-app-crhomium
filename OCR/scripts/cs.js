@@ -1268,7 +1268,7 @@ return false;
 		});
 		$body.on('mousemove', onOCRMouseMove);
 		// we need the closure here. `.one` would automagically remove the listener when done
-		$body.one('mouseup', function (evt) {
+		$(window).one('mouseup', function (evt) {
 			var $dialog;
 			isImageParse = false;
 			imageParseData = null;
@@ -2016,7 +2016,8 @@ _initialize: function () {
 			Mask.addToBody().show();
 			// instantiate overlay
 			this.textOverlay = TextOverlay();
-			$body.on('mousedown', onOCRMouseDown);
+			$body.off('mousedown', onOCRMouseDown).on('mousedown', onOCRMouseDown);
+			IS_CAPTURED = false; // Resetear estado de captura
 			OCRTranslator.state = 'enabled';
 			return this;
 		},
