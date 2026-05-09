@@ -364,7 +364,11 @@ function cleanAndFormatWords(words) {
       if (fused) { cleanWords.push(fused); w++; continue; }
     }
 
-    if (conf >= 80 || isSpanishWord(text)) cleanWords.push(text);
+    const isCapitalized = text.length > 0 && text[0] === text[0].toUpperCase();
+    const hasAccent = /[áéíóúÁÉÍÓÚ]/.test(text);
+    const trustThreshold = (hasAccent || isCapitalized) ? 70 : 80;
+
+    if (conf >= trustThreshold || isSpanishWord(text)) cleanWords.push(text);
     else {
       const corrected = autoCorrectOCRWord(text) || trySplitMergedWord(text);
       if (corrected) cleanWords.push(corrected);

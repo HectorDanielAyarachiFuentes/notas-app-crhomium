@@ -15003,39 +15003,56 @@ const SPANISH_COMMON = new Set(["perro",
 "resolveremos",
 "mountain",
 "prestes",
+"itálico",
+"navone",
 "demandante"]);
 
 // Función para verificar si una palabra está en el diccionario (case-insensitive)
 function isSpanishWord(word) {
   if (!word) return false;
-  const lower = word.toLowerCase().replace(/[.,;:!?¡¿""''`´\u201c\u201d]+/g, '');
-  if (!lower) return false;
+  // Limpieza agresiva de puntuación para validar la palabra pura
+  const clean = word.replace(/[.,;:!?¡¿""''`´\u201c\u201d\(\)\[\]\{\}]+/g, '');
+  const lower = clean.toLowerCase();
+  if (!lower || lower.length < 2) return false;
+  
+  // 1. Verificación en diccionario base (Optimizado)
   if (SPANISH_COMMON.has(lower)) return true;
-  // Números puros
-  if (/^\d+$/.test(lower)) return true;
-  // Palabras con tilde que podrían estar sin ella
+
+  // 2. Heurística de Acentos (Integral: Tesseract es muy preciso con tildes)
+  if (/[áéíóú]/.test(lower)) {
+    // Patrones comunes: esdrújulas, terminaciones en -ón, -ía, etc.
+    if (lower.endsWith('ón') || lower.endsWith('ía') || lower.endsWith('és') || lower.endsWith('ico') || lower.endsWith('ica')) return true;
+    if (/[aeiou][áéíóú][aeiou]/.test(lower)) return true;
+  }
+
+  // 3. Morfología: Sufijos comunes del español (Solución Integral)
+  const suffixes = ['ción', 'sión', 'idad', 'ismo', 'able', 'ible', 'ante', 'ente', 'miento', 'anza', 'ería', 'ista'];
+  for (const s of suffixes) {
+    if (lower.endsWith(s) && lower.length > s.length + 2) return true;
+  }
+
+  // 4. Nombres Propios (Heurística de capitalización)
+  const isCapitalized = clean.length > 0 && clean[0] === clean[0].toUpperCase();
+  if (isCapitalized && lower.length >= 4) {
+    // Si tiene una estructura consonante-vocal-consonante balanceada, es probable que sea un nombre
+    const vowels = (lower.match(/[aeiouáéíóú]/g) || []).length;
+    if (vowels >= 2 && vowels < lower.length) return true;
+  }
+
+  // 5. Palabras con tilde faltante (Normalización)
   const sinTilde = lower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   if (SPANISH_COMMON.has(sinTilde)) return true;
   
-  // Revisar sufijos comunes (diminutivos, adverbios)
-  if (lower.endsWith('mente')) {
-    const root = lower.slice(0, -5);
-    if (SPANISH_COMMON.has(root) || SPANISH_COMMON.has(root + 'o') || SPANISH_COMMON.has(root + 'a')) return true;
-  }
-  if (lower.endsWith('ito') || lower.endsWith('ita')) {
-    const root = lower.slice(0, -3);
-    if (SPANISH_COMMON.has(root + 'o') || SPANISH_COMMON.has(root + 'a') || SPANISH_COMMON.has(root + 'e')) return true;
-  }
-  if (lower.endsWith('itos') || lower.endsWith('itas')) {
-    const root = lower.slice(0, -4);
-    if (SPANISH_COMMON.has(root + 'o') || SPANISH_COMMON.has(root + 'a') || SPANISH_COMMON.has(root + 'e')) return true;
-  }
-  if (lower.endsWith('ísimo') || lower.endsWith('ísima')) {
-    const root = lower.slice(0, -5);
-    if (SPANISH_COMMON.has(root + 'o') || SPANISH_COMMON.has(root + 'a') || SPANISH_COMMON.has(root + 'e')) return true;
+  // 6. Derivaciones: Diminutivos y Superlativos
+  const deriv = ['mente', 'ito', 'ita', 'itos', 'itas', 'ísimo', 'ísima'];
+  for (const d of deriv) {
+    if (lower.endsWith(d)) {
+      const root = lower.slice(0, -d.length);
+      if (SPANISH_COMMON.has(root) || SPANISH_COMMON.has(root + 'o') || SPANISH_COMMON.has(root + 'a') || SPANISH_COMMON.has(root + 'e')) return true;
+    }
   }
 
-  return false;
+  return /^\d+$/.test(lower); // Aceptar números
 }
 
 // Intenta dividir una palabra fusionada en 2 palabras válidas del diccionario
