@@ -30,7 +30,12 @@ export async function getStorageMode() {
  * @param {StorageMode} mode
  */
 export async function setStorageMode(mode) {
-  await browserAPI.storage.local.set({ [MODE_KEY]: mode });
+  return new Promise(resolve => {
+    browserAPI.storage.local.set({ [MODE_KEY]: mode }, () => {
+      if (browserAPI.runtime.lastError) { /* Ignorar */ }
+      resolve();
+    });
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -70,7 +75,12 @@ export async function saveNotes(notes) {
   const mode = await getStorageMode();
 
   // Siempre guardar en local como caché/respaldo
-  await browserAPI.storage.local.set({ [NOTES_LOCAL_KEY]: notes });
+  await new Promise(resolve => {
+    browserAPI.storage.local.set({ [NOTES_LOCAL_KEY]: notes }, () => {
+      if (browserAPI.runtime.lastError) { /* Ignorar */ }
+      resolve();
+    });
+  });
 
   if (mode === 'drive') {
     try {
@@ -112,7 +122,12 @@ export async function mergeLocalWithDrive() {
 
   const merged = Array.from(notesMap.values());
   // Guardar fusión tanto en local como en Drive
-  await browserAPI.storage.local.set({ [NOTES_LOCAL_KEY]: merged });
+  await new Promise(resolve => {
+    browserAPI.storage.local.set({ [NOTES_LOCAL_KEY]: merged }, () => {
+      if (browserAPI.runtime.lastError) { /* Ignorar */ }
+      resolve();
+    });
+  });
   
   try {
     await uploadNotesToDrive(merged);
@@ -155,5 +170,10 @@ export async function getLocalProfile() {
  * @param {{ name: string, icon: string }} profile
  */
 export async function saveLocalProfile(profile) {
-  await browserAPI.storage.local.set({ [PROFILE_KEY]: profile });
+  await new Promise(resolve => {
+    browserAPI.storage.local.set({ [PROFILE_KEY]: profile }, () => {
+      if (browserAPI.runtime.lastError) { /* Ignorar */ }
+      resolve();
+    });
+  });
 }

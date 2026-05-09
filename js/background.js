@@ -4,10 +4,20 @@ import { getNotes, saveNotes } from './utils.js';
 browserAPI.runtime.onInstalled.addListener(() => {
   console.log('Notas Pro: Extensión instalada/actualizada correctamente (V4).');
   // Crear el menú contextual para cuando el usuario selecciona texto
-  browserAPI.contextMenus.create({
-    id: "save-to-notes-selection",
-    title: "Guardar en Notas Pro",
-    contexts: ["selection"]
+  // Limpiar antes de crear para evitar error de ID duplicado
+  browserAPI.contextMenus.removeAll(() => {
+    if (browserAPI.runtime.lastError) {
+      console.warn('Error al limpiar menús:', browserAPI.runtime.lastError.message);
+    }
+    browserAPI.contextMenus.create({
+      id: "save-to-notes-selection",
+      title: "Guardar en Notas Pro",
+      contexts: ["selection"]
+    }, () => {
+      if (browserAPI.runtime.lastError) {
+        console.warn('Error al crear menú contextual:', browserAPI.runtime.lastError.message);
+      }
+    });
   });
 });
 
@@ -69,8 +79,17 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.evt === 'capture-screen') {
     chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 70 }, (dataURL) => {
+      if (chrome.runtime.lastError) {
+        console.warn('Error en captureVisibleTab:', chrome.runtime.lastError.message);
+        sendResponse({ error: chrome.runtime.lastError.message });
+        return;
+      }
       chrome.tabs.getZoom(sender.tab.id, (zf) => {
-        sendResponse({ dataURL, zf });
+        if (chrome.runtime.lastError) {
+          sendResponse({ dataURL, zf: 1 });
+        } else {
+          sendResponse({ dataURL, zf });
+        }
       });
     });
     return true;
@@ -289,6 +308,10 @@ async function setupOffscreenDocument() {
       url: path,
       reasons: ['DOM_PARSER'], // Best fit for OCR tasks needing DOM/Worker
       justification: 'Realizar OCR local mediante Tesseract.js que requiere un entorno DOM estable y soporte de Workers.',
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('Error al crear documento offscreen:', chrome.runtime.lastError.message);
+      }
     });
     await creating;
     creating = null;

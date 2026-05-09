@@ -96,25 +96,30 @@ function getAuthToken(interactive = false) {
 
     console.log(`getAuthToken, interactive: ${interactive}`);
     
-    if (browserAPI.identity.getAuthToken) {
-      browserAPI.identity.getAuthToken({ interactive }, async (token) => {
-        if (browserAPI.runtime.lastError) {
-          const errorMsg = browserAPI.runtime.lastError.message || '';
-          console.log(`getAuthToken nativo falló: ${errorMsg}`);
-          
-          if (errorMsg.includes('Function unsupported')) {
-            console.log("Usando fallback de WebAuthFlow para navegadores no-Chrome...");
-            getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
+    if (typeof browserAPI.identity.getAuthToken === 'function') {
+      try {
+        browserAPI.identity.getAuthToken({ interactive }, async (token) => {
+          if (browserAPI.runtime.lastError) {
+            const errorMsg = browserAPI.runtime.lastError.message || '';
+            console.log(`getAuthToken nativo falló: ${errorMsg}`);
+            
+            if (errorMsg.includes('Function unsupported') || errorMsg.includes('not supported')) {
+              console.log("Usando fallback de WebAuthFlow para este navegador...");
+              getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
+            } else {
+              reject(new Error(`getAuthToken Error: ${errorMsg}`));
+            }
           } else {
-            reject(new Error(`getAuthToken Error: ${errorMsg}`));
+            console.log("Token obtenido con éxito (nativo).");
+            memoryToken = token;
+            await browserAPI.storage.local.set({ [TOKEN_CACHE_KEY]: token });
+            resolve(token);
           }
-        } else {
-          console.log("Token obtenido con éxito (nativo).");
-          memoryToken = token;
-          await browserAPI.storage.local.set({ [TOKEN_CACHE_KEY]: token });
-          resolve(token);
-        }
-      });
+        });
+      } catch (err) {
+        console.log("Error al llamar a getAuthToken, usando fallback:", err.message);
+        getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
+      }
     } else {
       console.log("getAuthToken no existe. Usando fallback de WebAuthFlow...");
       getAuthTokenWebFlow(interactive).then(resolve).catch(reject);
@@ -171,14 +176,19 @@ async function driveApiRequest(url, options, initialToken) {
   let response = await fetch(url, options);
 
   if (response.status === 401) {
-    console.warn("Token inválido o expirado. Reintentando con un nuevo token...");
+    console.log("Token inválido o expirado. Reintentando con un nuevo token...");
     // Limpiar caché al recibir 401 para forzar la obtención de uno nuevo
     memoryToken = null;
     await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
 
     // Invalidar el token en la caché nativa del navegador para forzar uno nuevo
     if (browserAPI.identity && browserAPI.identity.removeCachedAuthToken) {
-      await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, resolve));
+      await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, () => {
+        if (browserAPI.runtime.lastError) {
+          console.log("removeCachedAuthToken info:", browserAPI.runtime.lastError.message);
+        }
+        resolve();
+      }));
     }
     
     token = await getAuthToken(false); // Obtener nuevo token no interactivamente
@@ -297,13 +307,16 @@ export async function getAuthTokenAndInfo(interactive = false) {
     });
 
     if (response.status === 401) {
-        console.warn("Token de usuario expirado. Reintentando...");
+        console.log("Token de usuario expirado. Reintentando...");
         memoryToken = null;
         await browserAPI.storage.local.remove(TOKEN_CACHE_KEY);
 
         // Invalidar el token en la caché nativa del navegador para forzar uno nuevo
         if (browserAPI.identity && browserAPI.identity.removeCachedAuthToken) {
-            await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, resolve));
+            await new Promise(resolve => browserAPI.identity.removeCachedAuthToken({ token: token }, () => {
+                if (browserAPI.runtime.lastError) { /* Silencioso */ }
+                resolve();
+            }));
         }
 
         token = await getAuthToken(interactive);
@@ -340,9 +353,14 @@ export async function removeAuthToken() {
       // Invalidamos el token en la caché del navegador, si está soportado.
       if (browserAPI.identity.removeCachedAuthToken) {
         try {
-          await new Promise((resolve) => browserAPI.identity.removeCachedAuthToken({ token }, resolve));
+          await new Promise((resolve) => browserAPI.identity.removeCachedAuthToken({ token }, () => {
+            if (browserAPI.runtime.lastError) {
+              console.log("Sesión local removida con aviso:", browserAPI.runtime.lastError.message);
+            }
+            resolve();
+          }));
         } catch (e) {
-          console.warn("removeCachedAuthToken falló o no está soportado:", e.message);
+          console.warn("removeCachedAuthToken falló:", e.message);
         }
       }
       // Invalidamos el token en los servidores de Google.

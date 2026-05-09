@@ -248,7 +248,9 @@ function clearEditor() {
   contentEl.classList.remove('invalid');
   status('Editor limpio.', 'info');
   updateCharCount(); // Resetear contador al limpiar
-  browserAPI.storage.local.remove(['editorDraft', 'editingIdDraft']); // Limpiar borradores al resetear
+  browserAPI.storage.local.remove(['editorDraft', 'editingIdDraft'], () => {
+    if (browserAPI.runtime.lastError) { /* Ignorar */ }
+  }); // Limpiar borradores al resetear
   renderNotes(); // Re-render para quitar cualquier resaltado
 }
 
@@ -318,9 +320,14 @@ async function performSave(isAutoSave = false) {
     });
   } else {
     // Es auto-guardado de una nota NUEVA, guardamos borrador local
-    await browserAPI.storage.local.set({ 
-      editorDraft: { title, content },
-      editingIdDraft: editingId 
+    await new Promise(resolve => {
+      browserAPI.storage.local.set({ 
+        editorDraft: { title, content },
+        editingIdDraft: editingId 
+      }, () => {
+        if (browserAPI.runtime.lastError) { /* Ignorar */ }
+        resolve();
+      });
     });
     return;
   }
@@ -330,7 +337,12 @@ async function performSave(isAutoSave = false) {
       await saveNotes(notes);
     } else {
       // En modo local, usamos browserAPI directamente para saltar la lógica de Drive en storage-manager
-      await browserAPI.storage.local.set({ notes: notes });
+      await new Promise(resolve => {
+        browserAPI.storage.local.set({ notes: notes }, () => {
+          if (browserAPI.runtime.lastError) { /* Ignorar */ }
+          resolve();
+        });
+      });
     }
     renderNotes();
     
@@ -414,14 +426,27 @@ document.addEventListener('click', (e) => {
 themeSelector.addEventListener('change', (e) => {
   const selectedTheme = e.target.value;
   applyTheme(selectedTheme);
-  browserAPI.storage.sync.set({ theme: selectedTheme });
+  browserAPI.storage.sync.set({ theme: selectedTheme }, () => {
+    if (browserAPI.runtime.lastError) {
+      // Si sync falla en Opera, intentar en local como fallback
+      browserAPI.storage.local.set({ theme: selectedTheme }, () => {
+        if (browserAPI.runtime.lastError) { /* Ignorar */ }
+      });
+    }
+  });
 });
 
-if (psmSelector) {
-  psmSelector.addEventListener('change', (e) => {
-    browserAPI.storage.sync.set({ psmMode: e.target.value });
-  });
-}
+  if (psmSelector) {
+    psmSelector.addEventListener('change', (e) => {
+      browserAPI.storage.sync.set({ psmMode: e.target.value }, () => {
+        if (browserAPI.runtime.lastError) {
+          browserAPI.storage.local.set({ psmMode: e.target.value }, () => {
+             if (browserAPI.runtime.lastError) { /* Ignorar */ }
+          });
+        }
+      });
+    });
+  }
 
 function applyTheme(theme) {
   const docEl = document.documentElement;
@@ -450,6 +475,15 @@ async function exportNotes() {
           url: reader.result,
           filename: fileName,
           saveAs: true
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.warn("Error al descargar:", chrome.runtime.lastError.message);
+            // Fallback: abrir en nueva pestaña
+            const a = document.createElement('a');
+            a.href = reader.result;
+            a.download = fileName;
+            a.click();
+          }
         });
       };
       reader.readAsDataURL(blob);
@@ -516,19 +550,24 @@ importFileInput.addEventListener('change', (e) => {
 if (ocrBtn) {
   ocrBtn.addEventListener('click', async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://')) {
+      const tabs = await browserAPI.tabs.query({ active: true, lastFocusedWindow: true });
+      const tab = tabs[0];
+      
+      if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
         status('El navegador no permite el uso de OCR en esta página.', 'danger', 5000);
         return;
       }
 
       // Enviar la solicitud OCR al background y cerrar el popup inmediatamente
-      // para no tapar la pantalla durante la selección del área.
-      // El texto extraído se guardará automáticamente como nota desde background.js
-      chrome.runtime.sendMessage({ action: 'performBackgroundOCR', tab });
+      browserAPI.runtime.sendMessage({ action: 'performBackgroundOCR', tab }, (response) => {
+        // Manejar el error de runtime si el background no responde o la extensión se recargó
+        if (browserAPI.runtime.lastError) {
+          console.warn("Error enviando mensaje OCR:", browserAPI.runtime.lastError.message);
+        }
+      });
       
       // Cerrar el popup para liberar la pantalla completa
-      window.close();
+      setTimeout(() => window.close(), 100);
     } catch (e) {
       status('Error: ' + e.message, 'danger');
     }
@@ -538,19 +577,34 @@ if (ocrBtn) {
 if (pinBtn) {
   pinBtn.addEventListener('click', async () => {
     try {
-      if (chrome && chrome.sidePanel) {
-        await chrome.sidePanel.open({ windowId: (await chrome.windows.getCurrent()).id });
-        window.close();
+      // Verificamos no solo si el objeto existe, sino si la función open está disponible
+      if (typeof chrome !== 'undefined' && chrome.sidePanel && typeof chrome.sidePanel.open === 'function') {
+        chrome.sidePanel.open({ windowId: (await chrome.windows.getCurrent()).id }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn("sidePanel.open falló:", chrome.runtime.lastError.message);
+            // Fallback si la función está pero falla (ej. por falta de gesto de usuario o soporte parcial)
+            openFallbackWindow();
+          } else {
+            window.close();
+          }
+        });
       } else {
-        // Fallback para navegadores sin Side Panel nativo (Opera, etc)
-        await chrome.windows.create({ url: 'popup.html', type: 'popup', width: 450, height: 750 });
-        window.close();
+        openFallbackWindow();
       }
     } catch (e) {
       console.error("Error al anclar:", e);
-      status('Error al anclar.', 'danger');
+      openFallbackWindow();
     }
   });
+}
+
+async function openFallbackWindow() {
+  try {
+    await chrome.windows.create({ url: 'popup.html', type: 'popup', width: 450, height: 750 });
+    window.close();
+  } catch (err) {
+    status('Error al anclar.', 'danger');
+  }
 }
 
 // --- Sincronización ---
@@ -723,7 +777,11 @@ logoutBtn.addEventListener('click', async () => {
 
 autoSyncToggle.addEventListener('change', async (e) => {
   isAutoSyncEnabled = e.target.checked;
-  await browserAPI.storage.sync.set({ autoSyncEnabled: isAutoSyncEnabled });
+  browserAPI.storage.sync.set({ autoSyncEnabled: isAutoSyncEnabled }, () => {
+    if (browserAPI.runtime.lastError) {
+      browserAPI.storage.local.set({ autoSyncEnabled: isAutoSyncEnabled });
+    }
+  });
   if (isAutoSyncEnabled) {
     if (isLoggedIn) {
       status('Sincronización automática activada.', 'success');
