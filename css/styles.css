@@ -351,7 +351,7 @@ body.is-side-panel .header-actions {
 }
 
 /* Styled Select */
-#theme-selector {
+#theme-selector, #psm-selector {
   appearance: none;
   background: var(--surface-hover);
   border: 1px solid var(--border-color);
@@ -365,9 +365,12 @@ body.is-side-panel .header-actions {
   background-repeat: no-repeat;
   background-position: right 10px center;
   transition: all 0.2s ease;
+  width: 100%;
+  max-width: 150px;
+  text-overflow: ellipsis;
 }
 
-#theme-selector:hover {
+#theme-selector:hover, #psm-selector:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
 }

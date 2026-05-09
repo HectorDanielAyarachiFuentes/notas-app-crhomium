@@ -120,8 +120,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
 
+              // 4. Detección Inteligente de Columnas (Modo 'auto')
+              // Si detectamos grandes canalones blancos verticales, es muy probable que sea una tabla o texto en columnas.
+              let isTableLayout = false;
+              if (message.psmMode === 'auto') {
+                const w = canvas.width;
+                const h = canvas.height;
+                const colDarkness = new Uint32Array(w);
+                
+                // Calculamos la "oscuridad" de cada columna (cantidad de píxeles de texto)
+                for (let y = 0; y < h; y++) {
+                  for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    // El texto es oscuro (valor < 128)
+                    if (data[i] < 128) {
+                      colDarkness[x]++;
+                    }
+                  }
+                }
+                
+                let textBlockCount = 0;
+                let inTextBlock = false;
+                let currentGutterWidth = 0;
+                // Un canalón (gutter) debe ser al menos el 1.5% del ancho total para considerarse separador de columnas
+                const minGutterWidth = Math.max(10, Math.floor(w * 0.015)); 
+                
+                for (let x = 0; x < w; x++) {
+                  // Una columna tiene texto si tiene más de 2 píxeles oscuros (filtro de ruido)
+                  const hasText = colDarkness[x] > 2;
+                  
+                  if (hasText) {
+                    currentGutterWidth = 0;
+                    if (!inTextBlock) {
+                      inTextBlock = true;
+                      textBlockCount++;
+                    }
+                  } else {
+                    currentGutterWidth++;
+                    if (currentGutterWidth > minGutterWidth && inTextBlock) {
+                      inTextBlock = false;
+                    }
+                  }
+                }
+                
+                // Si hay 2 o más bloques de texto claramente separados, asumimos layout de tabla/columnas
+                isTableLayout = textBlockCount >= 2;
+              }
+
               ctx.putImageData(imgData, 0, 0);
-              resolve({ dataUrl: canvas.toDataURL('image/png'), scale: scale, origColors: origColors, imgWidth: canvas.width, imgHeight: canvas.height });
+              resolve({ 
+                dataUrl: canvas.toDataURL('image/png'), 
+                scale: scale, 
+                origColors: origColors, 
+                imgWidth: canvas.width, 
+                imgHeight: canvas.height,
+                isTableLayout: isTableLayout 
+              });
             } catch (e) {
               reject(new Error('Error al procesar imagen: ' + e.message));
             }
@@ -132,11 +186,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         console.log('Offscreen: Procesando OCR...');
 
-        // PSM 6 = SINGLE_BLOCK: trata la imagen como un bloque uniforme de texto.
-        // Es el modo ideal para carteles, letreros e imágenes con pocas líneas.
-        // PSM 3 (auto) falla en estas imágenes porque intenta detectar columnas/párrafos.
+        // PSM dinámico (por defecto auto -> inteligente)
         try {
-          await cachedWorker.setParameters({ tessedit_pageseg_mode: '6' });
+          let psm = message.psmMode || 'auto';
+          if (psm === 'auto') {
+            psm = preprocessed.isTableLayout ? '3' : '6';
+            console.log(`Offscreen: PSM Inteligente detectó -> ${preprocessed.isTableLayout ? 'Tabla/Columnas (PSM 3)' : 'Bloque (PSM 6)'}`);
+          } else {
+            console.log(`Offscreen: Configurando PSM manual a ${psm}`);
+          }
+          await cachedWorker.setParameters({ tessedit_pageseg_mode: psm });
         } catch(e) {
           console.warn('Offscreen: No se pudo fijar PSM, usando modo por defecto.', e);
         }
@@ -463,8 +522,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           formattedLines.push(text);
         }
 
-        // ── Paso 5: Limpieza final global ────────────────────────────────────
-        let formattedText = formattedLines.join('\n').trim();
+        // ── Paso 5: Limpieza final global (Unión inteligente de líneas) ──────
+        const forceLineBreaks = (message.psmMode === '3' || (message.psmMode === 'auto' && preprocessed.isTableLayout));
+        let resultText = '';
+        
+        for (let i = 0; i < formattedLines.length; i++) {
+          const current = formattedLines[i];
+          
+          if (current === '') {
+            resultText += '\n\n';
+            continue;
+          }
+          
+          resultText += current;
+          
+          if (i < formattedLines.length - 1 && formattedLines[i+1] !== '') {
+            if (forceLineBreaks) {
+              resultText += '\n';
+            } else {
+              // Modo bloque/párrafo: unir con espacio fluidamente
+              if (current.endsWith('-')) {
+                // Si la línea termina en guion (palabra cortada), lo quitamos y unimos sin espacio
+                resultText = resultText.slice(0, -1);
+              } else {
+                resultText += ' ';
+              }
+            }
+          }
+        }
+        
+        let formattedText = resultText.trim();
         // Colapsar 3+ saltos de línea consecutivos a máximo 2 (un párrafo)
         formattedText = formattedText.replace(/\n{3,}/g, '\n\n');
 

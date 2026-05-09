@@ -117,11 +117,15 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         await setupOffscreenDocument();
+        const opts = await chrome.storage.sync.get(['psmMode']);
+        const psmMode = opts.psmMode || 'auto';
+
         const response = await chrome.runtime.sendMessage({
           evt: 'performLocalOCR',
           ocrLang: message.ocrLang,
           imagepath: message.imagepath,
-          bestMode: message.bestMode
+          bestMode: message.bestMode,
+          psmMode: psmMode
         });
         sendResponse(response);
       } catch (e) {

@@ -48,6 +48,7 @@ const deleteAllBtn = document.getElementById('deleteAllBtn');
 const settingsDropdown = document.getElementById('settings-dropdown');
 const versionSpan = document.getElementById('extension-version');
 const themeSelector = document.getElementById('theme-selector');
+const psmSelector = document.getElementById('psm-selector');
 const exportBtn = document.getElementById('export-btn');
 const importBtn = document.getElementById('import-btn');
 const importFileInput = document.getElementById('import-file-input');
@@ -415,6 +416,12 @@ themeSelector.addEventListener('change', (e) => {
   applyTheme(selectedTheme);
   browserAPI.storage.sync.set({ theme: selectedTheme });
 });
+
+if (psmSelector) {
+  psmSelector.addEventListener('change', (e) => {
+    browserAPI.storage.sync.set({ psmMode: e.target.value });
+  });
+}
 
 function applyTheme(theme) {
   const docEl = document.documentElement;
@@ -964,8 +971,9 @@ async function init() {
     contentEl.value = editorDraft.content || '';
   }
 
-  const { theme } = await browserAPI.storage.sync.get({ theme: 'system' });
+  const { theme, psmMode } = await browserAPI.storage.sync.get({ theme: 'system', psmMode: 'auto' });
   themeSelector.value = theme;
+  if (psmSelector) psmSelector.value = psmMode;
   applyTheme(theme);
 
   updateCharCount();
