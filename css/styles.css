@@ -700,9 +700,11 @@ button:not(.tab-button):not(.btn-icon) {
 }
 
 #deleteAllBtn.secondary:hover {
-  background: var(--danger);
+  background: rgba(244, 63, 94, 0.25);
+  border-color: var(--danger);
   color: white;
-  box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+  box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.4);
+  transform: translateY(-1px);
 }
 
 /* History List */
