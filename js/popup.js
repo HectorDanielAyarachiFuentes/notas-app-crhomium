@@ -558,16 +558,20 @@ if (ocrBtn) {
         return;
       }
 
-      // Enviar la solicitud OCR al background y cerrar el popup inmediatamente
+      // 🪄 EFECTO MÁGICO: Activar animación de escaneo antes de cerrar
+      const container = document.querySelector('.container');
+      if (container) container.classList.add('ocr-processing');
+      status('Iniciando escáner...', 'info');
+
+      // Enviar la solicitud OCR al background
       browserAPI.runtime.sendMessage({ action: 'performBackgroundOCR', tab }, (response) => {
-        // Manejar el error de runtime si el background no responde o la extensión se recargó
         if (browserAPI.runtime.lastError) {
           console.warn("Error enviando mensaje OCR:", browserAPI.runtime.lastError.message);
         }
       });
       
-      // Cerrar el popup para liberar la pantalla completa
-      setTimeout(() => window.close(), 100);
+      // Retrasar el cierre un poco más (600ms) para que se vea la animación de la línea de luz
+      setTimeout(() => window.close(), 600);
     } catch (e) {
       status('Error: ' + e.message, 'danger');
     }
