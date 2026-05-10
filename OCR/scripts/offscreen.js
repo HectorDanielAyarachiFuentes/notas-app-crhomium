@@ -28,21 +28,25 @@ async function getOrCreateWorker(targetLang, isBestMode) {
           cachedWorker = null;
         }
         
-        console.log(`Offscreen: Iniciando Worker Local (${lang}, Best: ${useBest}, Intento: ${attempts + 1})`);
+        console.log(`Offscreen: Iniciando Worker Local v7 (${lang}, Best: ${useBest}, Intento: ${attempts + 1})`);
         
         // Rutas relativas desde offscreen.html (ubicado en /OCR/)
         const workerPath = 'scripts/worker.min.js';
         const corePath = 'scripts/tesseract-core-simd.wasm.js';
         const langPath = useBest ? 'tessdata_best/' : 'tessdata/';
 
-        // Inicialización híbrida v4/v5 (máxima compatibilidad)
+        // Inicialización nativa v7 (más rápida y eficiente)
         const worker = await Tesseract.createWorker(lang, useBest ? 1 : 3, {
           workerPath: workerPath,
           corePath: corePath,
           langPath: langPath,
           workerBlobURL: false,
           gzip: true,
-          logger: m => console.log(`OCR [${m.status}]: ${Math.round(m.progress * 100)}%`)
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
+            }
+          }
         });
 
         cachedWorker = worker;
@@ -216,7 +220,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (psm === 'auto') psm = preprocessed.isMultiColumn ? '3' : '6';
         await cachedWorker.setParameters({ tessedit_pageseg_mode: psm });
 
-        const recognizePromise = cachedWorker.recognize(preprocessed.dataUrl);
+        // En Tesseract.js v7, debemos solicitar explícitamente los formatos de salida adicionales (blocks, lines, words, etc.)
+        // para mantener la reconstrucción estructural que usa el resto del script.
+        const recognizePromise = cachedWorker.recognize(preprocessed.dataUrl, {}, { 
+          blocks: true, 
+          lines: true, 
+          words: true 
+        });
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout OCR')), 30000));
         const { data } = await Promise.race([recognizePromise, timeoutPromise]);
 
