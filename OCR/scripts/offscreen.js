@@ -310,17 +310,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         for (const [p, r] of spanishFixes) formattedText = formattedText.replace(p, r);
 
         // Overlay para la UI (Ajustado a la escala)
+        let flatWords = data.words || [];
+        if (flatWords.length === 0 && data.blocks) {
+          data.blocks.forEach(b => {
+            (b.paragraphs || []).forEach(p => {
+              (p.lines || []).forEach(l => {
+                (l.words || []).forEach(w => flatWords.push(w));
+              });
+            });
+          });
+        }
+        
         const scale = preprocessed.scale;
+        const allWordsForOverlay = flatWords.filter(w => (w.text || '').trim().length > 0 && w.bbox);
+        
         const textOverlay = {
-          HasOverlay: (data.lines || []).length > 0,
-          Lines: (data.lines || []).map(l => ({
-            MaxHeight: ((l.bbox.y1 - l.bbox.y0) / scale),
-            MinTop: (l.bbox.y0 / scale),
-            Words: (l.words || []).map(w => ({
+          HasOverlay: allWordsForOverlay.length > 0,
+          Lines: allWordsForOverlay.map(w => ({
+            MaxHeight: ((w.bbox.y1 - w.bbox.y0) / scale),
+            MinTop: (w.bbox.y0 / scale),
+            Words: [{
               WordText: w.text,
-              Left: (w.bbox.x0 / scale), Top: (w.bbox.y0 / scale),
-              Width: ((w.bbox.x1 - w.bbox.x0) / scale), Height: ((w.bbox.y1 - w.bbox.y0) / scale)
-            }))
+              Left: (w.bbox.x0 / scale), 
+              Top: (w.bbox.y0 / scale),
+              Width: ((w.bbox.x1 - w.bbox.x0) / scale), 
+              Height: ((w.bbox.y1 - w.bbox.y0) / scale)
+            }]
           }))
         };
 
